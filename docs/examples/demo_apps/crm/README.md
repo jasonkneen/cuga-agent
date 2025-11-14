@@ -16,15 +16,11 @@ A comprehensive FastAPI-based CRM system with Accounts, Leads, Contacts, and Opp
 
 1. **Install the package:**
    ```bash
-   pip install .
-   # or with uv
-   uv pip install -e .
+   uv sync
    ```
 
 2. **Run the application:**
    ```bash
-   python -m crm_api.main
-   # or with uv
    uv run python -m crm_api.main
    ```
 

@@ -11,5 +11,9 @@ dependencies = [
     "httpx",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.uv.sources]
 cuga = { path = "../../../", editable = true }

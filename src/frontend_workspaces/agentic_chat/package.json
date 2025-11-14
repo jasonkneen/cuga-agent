@@ -70,7 +70,7 @@
     "immer": "^10.1.1",
     "inversify": "^6.0.2",
     "jose": "^5.9.2",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.1.1",
     "jsoneditor": "^10.0.0",
     "loglevel": "^1.9.2",
     "loglevel-plugin-prefix": "^0.8.4",
