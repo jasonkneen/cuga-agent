@@ -120,6 +120,7 @@ def create_tool_from_api_dict(tool_name: str, tool_def: Dict[str, Any], app_name
         parameters = _convert_openapi_params_to_json_schema(parameters)
 
     field_definitions = {}
+    param_constraints = {}
     if isinstance(parameters, dict):
         if 'properties' in parameters:
             props = parameters['properties']
@@ -137,6 +138,11 @@ def create_tool_from_api_dict(tool_name: str, tool_def: Dict[str, Any], app_name
                     'object': dict,
                 }
                 python_type = type_mapping.get(param_type, str)
+
+                # Store constraints for later use in prompt
+                constraints = param_schema.get('constraints', [])
+                if constraints:
+                    param_constraints[param_name] = constraints
 
                 if param_name in required:
                     field_definitions[param_name] = (python_type, ...)
@@ -187,6 +193,9 @@ def create_tool_from_api_dict(tool_name: str, tool_def: Dict[str, Any], app_name
 
     if not hasattr(tool.func, '_response_schemas'):
         tool.func._response_schemas = response_schemas
+
+    if not hasattr(tool.func, '_param_constraints'):
+        tool.func._param_constraints = param_constraints
 
     return tool
 

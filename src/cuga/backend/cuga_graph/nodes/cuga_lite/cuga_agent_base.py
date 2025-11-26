@@ -820,10 +820,14 @@ The following async functions are available in your Python execution environment
         tool_name = tool.name if hasattr(tool, 'name') else str(tool)
         tool_desc = tool.description if hasattr(tool, 'description') else "No description"
 
-        # Get response_schemas from the function's custom attribute
+        # Get response_schemas and param_constraints from the function's custom attributes
         response_schemas = {}
         if hasattr(tool, 'func') and hasattr(tool.func, '_response_schemas'):
             response_schemas = tool.func._response_schemas
+
+        param_constraints = {}
+        if hasattr(tool, 'func') and hasattr(tool.func, '_param_constraints'):
+            param_constraints = tool.func._param_constraints
 
         if hasattr(tool, 'args_schema') and tool.args_schema:
             try:
@@ -895,7 +899,16 @@ The following async functions are available in your Python execution environment
 
                         desc = prop.get('description', '')
                         required_mark = " (required)" if name in required else " (optional)"
-                        params_list.append(f"- `{name}`: {python_type}{required_mark} - {desc}")
+
+                        # Include constraints if available (from custom attribute or schema)
+                        constraints = param_constraints.get(name, []) or prop.get('constraints', [])
+                        constraints_str = ""
+                        if constraints:
+                            constraints_str = f" [Constraints: {', '.join(constraints)}]"
+
+                        params_list.append(
+                            f"- `{name}`: {python_type}{required_mark} - {desc}{constraints_str}"
+                        )
                 except Exception:
                     params_list = [f"- {param.strip()}" for param in params_str.split(',') if param.strip()]
 

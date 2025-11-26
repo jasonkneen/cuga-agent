@@ -50,6 +50,12 @@ def create_tool_from_tracker(tool_name: str, tool_def: Dict[str, Any], app_name:
                 param_type = param.get('schema', {}).get('type', 'string')
                 param_desc = param.get('description', '')
                 properties[name] = {'type': param_type, 'description': param_desc}
+
+                # Handle constraints
+                constraints = param.get('constraints', [])
+                if constraints:
+                    properties[name]['constraints'] = constraints
+
                 if param.get('required', False):
                     required.append(name)
             return {'properties': properties, 'required': required}
@@ -57,6 +63,7 @@ def create_tool_from_tracker(tool_name: str, tool_def: Dict[str, Any], app_name:
         parameters = _convert_openapi_params_to_json_schema(parameters)
 
     field_definitions = {}
+    param_constraints = {}
     if isinstance(parameters, dict):
         if 'properties' in parameters:
             props = parameters['properties']
@@ -74,6 +81,11 @@ def create_tool_from_tracker(tool_name: str, tool_def: Dict[str, Any], app_name:
                     'object': dict,
                 }
                 python_type = type_mapping.get(param_type, str)
+
+                # Store constraints for later use in prompt
+                constraints = param_schema.get('constraints', [])
+                if constraints:
+                    param_constraints[param_name] = constraints
 
                 if param_name in required:
                     field_definitions[param_name] = (python_type, ...)
@@ -120,6 +132,12 @@ def create_tool_from_tracker(tool_name: str, tool_def: Dict[str, Any], app_name:
     tool = StructuredTool.from_function(
         func=tool_func, name=tool_name, description=description, args_schema=InputModel
     )
+
+    tool.func = tool_func
+
+    if not hasattr(tool.func, '_param_constraints'):
+        tool.func._param_constraints = param_constraints
+
     return tool
 
 
