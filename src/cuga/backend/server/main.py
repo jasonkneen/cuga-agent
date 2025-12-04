@@ -104,15 +104,13 @@ class AppState:
     def __init__(self):
         # Initializing all state variables to None or default values.
         self.tracker: Optional[ActivityTracker] = None
-        self.obs: Optional[Any] = None
-        self.info: Optional[Dict[str, Any]] = None
         self.env: Optional[BrowserEnvGymAsync | ExtensionEnv] = None
-        self.state: Optional[AgentState] = None
         self.agent: Optional[DynamicAgentGraph] = (
             None  # Replace Any with your Agent's class type if available
         )
-        # self.thread_id: Optional[str] = None  # Removed global thread_id
-        self.stop_agent: bool = False
+        # Per-thread cancellation events for concurrent user support
+        # Using asyncio.Event for thread-safe cancellation signaling
+        self.stop_events: Dict[str, asyncio.Event] = {}
         self.output_format: OutputFormat = (
             OutputFormat.WXO if settings.advanced_features.wxo_integration else OutputFormat.DEFAULT
         )
@@ -260,9 +258,8 @@ async def lifespan(app: FastAPI):
         )
     await asyncio.sleep(3)
     app_state.tracker.start_experiment(task_ids=['demo'], experiment_name='demo', description="")
-    app_state.obs, app_state.info = await app_state.env.reset()
-    app_state.stop_agent = False  # Reset stop flag on startup
-    app_state.state = default_state(page=None, observation=None, goal="")
+    # Reset environment (env is shared but state is per-thread via LangGraph)
+    await app_state.env.reset()
     langfuse_handler = (
         CallbackHandler()
         if settings.advanced_features.langfuse_tracing and CallbackHandler is not None
@@ -270,7 +267,6 @@ async def lifespan(app: FastAPI):
     )
     app_state.agent = DynamicAgentGraph(None, langfuse_handler=langfuse_handler)
     await app_state.agent.build_graph()
-    # app_state.thread_id = str(uuid.uuid4())  # Removed global thread_id initialization
 
     logger.info("Application finished starting up...")
     url = f"http://localhost:{settings.server_ports.demo}?t={random_id_with_timestamp()}"
@@ -351,14 +347,23 @@ async def setup_page_info(state: AgentState, env: ExtensionEnv | BrowserEnvGymAs
 
 async def event_stream(query: str, api_mode=False, resume=None, thread_id: str = None):
     """Handles the main agent event stream."""
-    app_state.stop_agent = False
+    # Create or get cancellation event for this thread
+    if thread_id:
+        if thread_id not in app_state.stop_events:
+            app_state.stop_events[thread_id] = asyncio.Event()
+        else:
+            # Reset the event for a new stream
+            app_state.stop_events[thread_id].clear()
 
-    # Create a local state object instead of using global app_state.state
-    # We need to initialize it properly based on whether we are resuming or starting new
+    # Create a local state object - retrieve from LangGraph if resuming, otherwise create new
     local_state = None
 
     # Create local tracker instance
     local_tracker = ActivityTracker()
+
+    # Local observation and info (not shared globally)
+    local_obs = None
+    local_info = None
 
     if not resume:
         # Initialize new state
@@ -366,11 +371,16 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
         local_state.input = query
         local_tracker.intent = query
     else:
-        # For resume, we'll fetch state from graph later or let AgentLoop handle it
-        pass
+        # For resume, fetch state from LangGraph
+        if thread_id:
+            latest_state_values = app_state.agent.graph.get_state(
+                {"configurable": {"thread_id": thread_id}}
+            ).values
+            if latest_state_values:
+                local_state = AgentState(**latest_state_values)
 
     if not api_mode:
-        app_state.obs, _, _, _, app_state.info = await app_state.env.step("")
+        local_obs, _, _, _, local_info = await app_state.env.step("")
         pu_answer = await app_state.env.pu_processor.transform(
             transformer_params={"filter_visible_only": True}
         )
@@ -417,15 +427,22 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
 
     try:
         while True:
-            if app_state.stop_agent:
-                logger.info("Agent execution stopped by user")
+            # Check cancellation event (non-blocking)
+            if thread_id and thread_id in app_state.stop_events and app_state.stop_events[thread_id].is_set():
+                logger.info(f"Agent execution stopped by user for thread_id: {thread_id}")
                 yield StreamEvent(name="Stopped", data="Agent execution was stopped by user.").format()
                 return
 
             async for event in agent_stream_gen:
-                # await asyncio.sleep(0.5)
-                if app_state.stop_agent:
-                    logger.info("Agent execution stopped by user during event processing")
+                # Check cancellation event during event processing
+                if (
+                    thread_id
+                    and thread_id in app_state.stop_events
+                    and app_state.stop_events[thread_id].is_set()
+                ):
+                    logger.info(
+                        f"Agent execution stopped by user during event processing for thread_id: {thread_id}"
+                    )
                     yield StreamEvent(name="Stopped", data="Agent execution was stopped by user.").format()
                     return
 
@@ -437,11 +454,12 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
 
                     if event.interrupt and not event.has_tools:
                         # Update local state from graph
-                        local_state = AgentState(
-                            **app_state.agent.graph.get_state(
+                        if thread_id:
+                            latest_state_values = app_state.agent.graph.get_state(
                                 {"configurable": {"thread_id": thread_id}}
                             ).values
-                        )
+                            if latest_state_values:
+                                local_state = AgentState(**latest_state_values)
                         return
                     if event.end:
                         try:
@@ -462,15 +480,17 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
 
                         # Get variables metadata from state
                         # We need to get the latest state from the graph to ensure we have the variables
-                        latest_state_values = app_state.agent.graph.get_state(
-                            {"configurable": {"thread_id": thread_id}}
-                        ).values
+                        variables_metadata = {}
+                        if thread_id:
+                            latest_state_values = app_state.agent.graph.get_state(
+                                {"configurable": {"thread_id": thread_id}}
+                            ).values
 
-                        if latest_state_values:
-                            local_state = AgentState(**latest_state_values)
-                            variables_metadata = local_state.variables_manager.get_all_variables_metadata()
-                        else:
-                            variables_metadata = {}
+                            if latest_state_values:
+                                local_state = AgentState(**latest_state_values)
+                                variables_metadata = (
+                                    local_state.variables_manager.get_all_variables_metadata()
+                                )
 
                         yield StreamEvent(
                             name="Answer",
@@ -481,11 +501,12 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
                             else "Done.",
                         ).format(app_state.output_format, thread_id=thread_id)
 
-                        local_state = AgentState(
-                            **app_state.agent.graph.get_state(
+                        if thread_id:
+                            latest_state_values = app_state.agent.graph.get_state(
                                 {"configurable": {"thread_id": thread_id}}
                             ).values
-                        )
+                            if latest_state_values:
+                                local_state = AgentState(**latest_state_values)
                         try:
                             # Log file operations disabled for test stability
                             pass
@@ -497,11 +518,17 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
                         logger.info(f"Stream finished for thread_id: {thread_id}")
                         return
                     elif event.has_tools:
-                        local_state = AgentState(
-                            **app_state.agent.graph.get_state(
+                        if thread_id:
+                            latest_state_values = app_state.agent.graph.get_state(
                                 {"configurable": {"thread_id": thread_id}}
                             ).values
-                        )
+                            if latest_state_values:
+                                local_state = AgentState(**latest_state_values)
+
+                        if not local_state or not local_state.messages:
+                            logger.warning("No state or messages available for tool call")
+                            continue
+
                         msg: AIMessage = local_state.messages[-1]
                         yield StreamEvent(name="tool_call", data=format_tools(msg.tool_calls)).format()
 
@@ -511,32 +538,36 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
                             None if api_mode else app_state.env.page,
                             app_state.env.tool_implementation_provider,
                             session_id="demo",
-                            page_data=app_state.obs,
+                            page_data=local_obs,
                             communicator=getattr(app_state.env, "extension_communicator", None),
                         )
                         local_state.feedback += feedback
 
                         if not api_mode:
-                            app_state.obs, _, _, _, app_state.info = await app_state.env.step("")
+                            local_obs, _, _, _, local_info = await app_state.env.step("")
                             pu_answer = await app_state.env.pu_processor.transform(
                                 transformer_params={"filter_visible_only": True}
                             )
-                            app_state.tracker.collect_image(pu_answer.img)
+                            local_tracker.collect_image(pu_answer.img)
                             local_state.elements_as_string = pu_answer.string_representation
                             local_state.focused_element_bid = pu_answer.focused_element_bid
                             local_state.read_page = pu_answer.page_content
                             local_state.url = app_state.env.get_url()
 
-                        app_state.agent.graph.update_state(
-                            {"configurable": {"thread_id": thread_id}}, local_state.model_dump()
-                        )
+                        if thread_id and local_state:
+                            app_state.agent.graph.update_state(
+                                {"configurable": {"thread_id": thread_id}}, local_state.model_dump()
+                            )
                         agent_stream_gen = agent_loop_obj.run_stream(state=None)
                         break
                 else:
                     logger.debug("Yield {}".format(event))
-                    local_state = AgentState(
-                        **app_state.agent.graph.get_state({"configurable": {"thread_id": thread_id}}).values
-                    )
+                    if thread_id:
+                        latest_state_values = app_state.agent.graph.get_state(
+                            {"configurable": {"thread_id": thread_id}}
+                        ).values
+                        if latest_state_values:
+                            local_state = AgentState(**latest_state_values)
                     name = ((event.split("\n")[0]).split(":")[1]).strip()
                     logger.debug("Yield {}".format(event))
                     if name not in ["ChatAgent"]:
@@ -679,11 +710,30 @@ async def stream(request: Request):
 
 
 @app.post("/stop")
-async def stop():
-    """Endpoint to stop the agent execution."""
-    logger.info("Received stop request")
-    app_state.stop_agent = True
-    return {"status": "success", "message": "Stop request received"}
+async def stop(request: Request):
+    """Endpoint to stop the agent execution for a specific thread."""
+    # Get thread_id from header or body
+    thread_id = request.headers.get("X-Thread-ID")
+    if not thread_id:
+        try:
+            body = await request.json()
+            thread_id = body.get("thread_id")
+        except Exception:
+            pass
+
+    if thread_id:
+        logger.info(f"Received stop request for thread_id: {thread_id}")
+        # Create event if it doesn't exist, then set it
+        if thread_id not in app_state.stop_events:
+            app_state.stop_events[thread_id] = asyncio.Event()
+        app_state.stop_events[thread_id].set()
+        return {"status": "success", "message": f"Stop request received for thread_id: {thread_id}"}
+    else:
+        logger.warning("Received stop request without thread_id, stopping all threads")
+        # Fallback: stop all threads (for backward compatibility)
+        for event in app_state.stop_events.values():
+            event.set()
+        return {"status": "success", "message": "Stop request received for all threads"}
 
 
 @app.post("/reset")
@@ -704,36 +754,22 @@ async def reset_agent_state(request: Request):
 
         if thread_id:
             logger.info(f"Resetting state for thread_id: {thread_id}")
-            # In LangGraph, state is persisted. We might want to clear it or just let the client generate a new thread_id.
-            # Since the client generates a new thread_id on reset, we strictly don't need to do anything here
-            # if we assume the old thread is just abandoned.
-            # However, if we want to support clearing the specific thread, we would need a way to delete it from checkpointer.
-            # For now, we'll just log it, as the client is instructed to generate a new ID.
-            pass
+            # Clear stop event for this thread
+            if thread_id in app_state.stop_events:
+                app_state.stop_events[thread_id].clear()
+
+            # In LangGraph, state is persisted per thread_id. The client should generate a new thread_id
+            # for a fresh start. If we need to clear the thread state, we would need to delete it from
+            # the checkpointer, but for now we'll just clear the stop flag.
+            # The LangGraph state will remain but won't be accessed if client uses a new thread_id.
         else:
-            logger.info("No thread_id provided for reset, performing global reset (legacy behavior)")
-            # Reset agent state to default (legacy global state)
-            # app_state.state = default_state(page=None, observation=None, goal="") # Removed global state
-            app_state.stop_agent = False
-            # app_state.thread_id = str(uuid.uuid4()) # Removed global thread_id
+            logger.info("No thread_id provided for reset, clearing all thread stop events")
+            # Clear all stop events (for backward compatibility)
+            for event in app_state.stop_events.values():
+                event.clear()
 
-        # Reset observation and info (Global - might affect other users if sharing env)
-        app_state.obs = None
-        app_state.info = None
-
-        # Reset the agent graph (Global - this re-initializes the graph definition, which is fine but maybe unnecessary per request)
-        if app_state.agent:
-            langfuse_handler = (
-                CallbackHandler()
-                if settings.advanced_features.langfuse_tracing and CallbackHandler is not None
-                else None
-            )
-            app_state.agent = DynamicAgentGraph(None, langfuse_handler=langfuse_handler)
-            await app_state.agent.build_graph()
-
-        # Reset environment if available (Global - this is risky for multi-user)
-        if app_state.env:
-            app_state.obs, app_state.info = await app_state.env.reset()
+        # Note: We don't reset the agent graph or environment as they are shared resources.
+        # State is managed per-thread via LangGraph's checkpointer.
 
         # Reset tracker experiment if enabled
         var_manger = VariablesManager()
