@@ -6,54 +6,54 @@
 
 <div align="center">
 
+# CUGA: The Configurable Generalist Agent
+
+### Start with a generalist. Customize for your domain. Deploy faster!
+
+Building a domain-specific enterprise agent from scratch is complex and requires significant effort: agent and tool orchestration, planning logic, safety and alignment policies, evaluation for performance/cost tradeoffs and ongoing improvements. CUGA is a state-of-the-art generalist agent designed with enterprise needs in mind, so you can focus on configuring your domain tools, policies and workflow.
+
+---
+
 [![Python](https://shields.io/badge/Python-3.12-blue?logo=python&style=for-the-badge)](https://www.python.org/)
 [![Status](https://shields.io/badge/Status-Active-success?logo=checkmarx&style=for-the-badge)]()
 [![Documentation](https://shields.io/badge/Documentation-Available-blue?logo=gitbook&style=for-the-badge)](https://docs.cuga.dev)
 [![Discord](https://shields.io/badge/Discord-Join-blue?logo=discord&style=for-the-badge)](https://discord.gg/aH6rAEEW)
 
+[![AppWorld](https://img.shields.io/badge/%F0%9F%A5%87%20%231%20on-AppWorld-gold?style=for-the-badge)](https://appworld.dev/leaderboard)
+[![WebArena](https://img.shields.io/badge/Top--tier%20on-WebArena-silver?style=for-the-badge)](https://docs.google.com/spreadsheets/d/1M801lEpBbKSNwP-vDBkC_pF7LdyGU1f_ufZb_NWNBZQ/edit?gid=0#gid=0)
+
 </div>
 
-> **📢 Recent Updates**
->
-> - **Nov 11, 2025** — ⚡ **CugaLite Mode**: Experience fast execution for simple API tasks! CugaLite automatically activates when your app has fewer than 25 tools, delivering up to 3x faster performance while maintaining high accuracy. Perfect for streamlined workflows and quick API operations.
->
->   ```toml
->   # Enable in ./src/cuga/settings.toml
->   lite_mode = true
->   lite_mode_tool_threshold = 25
->   ```
->
-> - **Oct 31, 2025** — 🎉 **Agent Trajectory Visualization**: Introducing `cuga viz` — a powerful web-based dashboard for visualizing and analyzing agent execution trajectories, decision-making processes, and tool usage patterns. Perfect for debugging, optimizing agent behavior, and understanding how CUGA reasons through complex tasks. [Learn more →](#-quick-start)
-> 
->   ```bash
->   cuga viz
->   ```
-> 
-> - **Oct 27, 2025** — 🔧 **Enhanced MCP Tool Support**: Full support for all transport types of MCP tools with comprehensive examples, making it easier to integrate custom MCP servers and protocols.
-> 
-> - **Oct 22, 2025** — 📊 **Evaluation on Your Own Data**: Test CUGA against your own test cases and APIs with structured evaluation framework. Validate API responses, score keywords and tool calls, and generate detailed JSON and CSV reports. Perfect for validating CUGA's performance on your specific use cases. [Learn more →](#-evaluation)
-> 
->   ```bash
->   cuga evaluate <test_file_path>
->   ```
 
-**CUGA (ConfigUrable Generalist Agent)** is an open-source generalist agent framework from IBM Research, purpose-built for enterprise automation. Designed for developers, CUGA combines and improves the best of foundational agentic patterns such as ReAct, CodeAct, and Planner-Executor — into a modular architecture enabling trustworthy, policy-aware, and composable automation across web interfaces, APIs, and custom enterprise systems.
+## Why CUGA?
+
+**CUGA (ConfigUrable Generalist Agent)** is an open-source generalist agent framework from IBM Research, purpose-built for enterprise automation. Designed for developers, CUGA delivers state-of-the-art performance while remaining highly configurable for your specific domain needs.
+
+### 🏆 Benchmark Performance
 
 CUGA achieves state-of-the-art performance on leading benchmarks:
 
-- 🥇 #1 on [AppWorld](https://appworld.dev/leaderboard) — a benchmark with 750 real-world tasks across 457 APIs, and
-- 🥈 #3 on [WebArena](https://docs.google.com/spreadsheets/d/1M801lEpBbKSNwP-vDBkC_pF7LdyGU1f_ufZb_NWNBZQ/edit?gid=0#gid=0) — a complex benchmark for autonomous web agents across application domains.
+- 🥇 **#1 on [AppWorld](https://appworld.dev/leaderboard)** — a benchmark with 750 real-world tasks across 457 APIs
+- 🥈 **Top-tier on [WebArena](https://docs.google.com/spreadsheets/d/1M801lEpBbKSNwP-vDBkC_pF7LdyGU1f_ufZb_NWNBZQ/edit?gid=0#gid=0)** (#1 from 02/25 - 09/25) — a complex benchmark for autonomous web agents across application domains
 
-#### Key features
+### ✨ Key Features & Capabilities
 
-- **Complex task execution**: State of the art results across Web and APIs.
-- **Flexible tool integrations**: CUGA works across REST APIs via OpenAPI specs, MCP servers, and custom connectors.
-- **Composable agent architecture**: CUGA itself can be exposed as a tool to other agents, enabling nested reasoning and multi-agent collaboration.
-- **Configurable reasoning modes**: Choose between fast heuristics or deep planning depending on your task’s complexity and latency needs.
-- **Policy-aware instructions** _(Experimental)_: CUGA components can be configured with policy-aware instructions to improve alignment of the agent behavior.
-- **Save & Reuse** _(Experimental)_: CUGA captures and reuses successful execution paths, enabling consistent and faster behavior across repeated tasks.
+- **High-performing generalist agent** — Benchmarked on complex web and API tasks. Combines best-of-breed agentic patterns (e.g. planner-executor, code-act) with structured planning and smart variable management to prevent hallucination and handle complexity
 
-Explore the [Roadmap](#roadmap) to see what’s ahead, or join the [🤝 Call for the Community](#call-for-the-community) to get involved.
+- **Configurable reasoning modes** — Balance performance and cost/latency with flexible modes ranging from fast heuristics to deep planning, optimizing for your specific task requirements
+
+- **Flexible agent and tool integration** — Seamlessly integrate tools via OpenAPI specs, MCP servers, and Langchain, enabling rapid connection to REST APIs, custom protocols, and Python functions
+
+- **Integrates with Langflow** — Low-code visual build experience for designing and deploying agent workflows without extensive coding
+
+- **Open-source and composable** — Built with modularity in mind, CUGA itself can be exposed as a tool to other agents, enabling nested reasoning and multi-agent collaboration. Evolving toward enterprise-grade reliability
+
+- **Configurable policy and human-in-the-loop instructions** _(Experimental)_ — Configure policy-aware instructions and approval gates to improve alignment and ensure safe agent behavior in enterprise contexts
+
+- **Save-and-reuse capabilities** _(Experimental)_ — Capture and reuse successful execution paths (plans, code, and trajectories) for faster and consistent behavior across repeated tasks
+
+Explore the [Roadmap](#roadmap) to see what's ahead, or join the [🤝 Call for the Community](#call-for-the-community) to get involved.
+
 
 ## 🎬 CUGA in Action
 
@@ -214,8 +214,6 @@ cuga viz
 
 Refer to: [`.env.example`](.env.example) for detailed examples.
 
-````
-
 CUGA supports multiple LLM providers with flexible configuration options. You can configure models through TOML files or override specific settings using environment variables.
 
 ## Supported Platforms
@@ -247,7 +245,7 @@ CUGA supports multiple LLM providers with flexible configuration options. You ca
    MODEL_NAME=gpt-4o                    # Override model name
    OPENAI_BASE_URL=https://api.openai.com/v1  # Override base URL
    OPENAI_API_VERSION=2024-08-06        # Override API version
-````
+   ```
 
 **Default Values:**
 
@@ -319,9 +317,6 @@ CUGA uses TOML configuration files located in `src/cuga/configurations/models/`:
 - `settings.azure.toml` - Azure OpenAI configuration
 
 Each file contains agent-specific model settings that can be overridden by environment variables.
-
-
-// Start of Selection
 
 </details>
 
@@ -599,18 +594,6 @@ For information on how to evaluate, see the [CUGA Evaluation Documentation](src/
 - 📖 [Example applications](./docs/examples)
 - 📧 Contact: [CUGA Team](https://forms.office.com/pages/responsepage.aspx?id=V3D2_MlQ1EqY8__KZK3Z6UtMUa14uFNMi1EyUFiZFGRUQklOQThLRjlYMFM2R1dYTk5GVTFMRzNZVi4u&route=shorturl)
 
-## Team
-
-- Alon Oved
-- Asaf Adi
-- Avi Yaeli
-- Harold Ship
-- Ido Levy
-- Nir Mashkif
-- Offer Akrabi
-- Sami Marreed
-- Segev Shlomov
-- Yinon Goldshtein
 
 ## Call for the Community
 
@@ -625,7 +608,7 @@ All contributions are welcome through [GitHub Issues](../../issues/new/choose) -
 
 ## Roadmap
 
-Amongst other, we’re exploring the following directions:
+Amongst other, we're exploring the following directions:
 
 - **Policy support**: procedural SOPs, domain knowledge, input/output guards, context- and tool-based constraints
 - **Performance improvements**: dynamic reasoning strategies that adapt to task complexity
