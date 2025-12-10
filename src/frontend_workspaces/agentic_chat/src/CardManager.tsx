@@ -158,7 +158,7 @@ const CardManager: React.FC<CardManagerProps> = ({ chatInstance }) => {
           }
 
           // Check if this is a final answer step
-          if (title === "FinalAnswerAgent" || title === "FinalAnswer") {
+          if (title === "FinalAnswerAgent" || title === "FinalAnswer" || title === "Answer") {
             console.log("🎯 Final answer detected, triggering reasoning collapse");
             setHasFinalAnswer(true);
             // Collapse reasoning immediately when final answer arrives
@@ -168,6 +168,15 @@ const CardManager: React.FC<CardManagerProps> = ({ chatInstance }) => {
               ...prev,
               [newStep.id]: true
             }));
+            
+            // Emit event to notify parent that final answer is complete
+            setTimeout(() => {
+              const event = new CustomEvent('finalAnswerComplete', {
+                detail: { stepId: newStep.id }
+              });
+              window.dispatchEvent(event);
+              console.log("🎯 Emitted finalAnswerComplete event");
+            }, 500);
           }
         },
         // No external loader toggle needed for within-card loading

@@ -62,8 +62,9 @@ logging/trajectory_data
 appworld/experiments/outputs
 logging/code
 
-# Documentation (but include demo_apps for demo_crm)
+# Documentation (but include demo_apps for demo_crm and huggingface examples)
 docs/**
 !docs/examples/demo_apps/
+!docs/examples/huggingface/
 README.md
 *.md

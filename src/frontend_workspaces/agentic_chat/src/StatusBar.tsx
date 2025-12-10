@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Wrench, Zap, CheckCircle2, AlertCircle, Users, User, MoreHorizontal } from "lucide-react";
+import { Wrench, Zap, CheckCircle2, AlertCircle, Users, User, MoreHorizontal, Lightbulb } from "lucide-react";
+import { exampleUtterances } from "./exampleUtterances";
 import "./StatusBar.css";
 
 interface Tool {
@@ -14,10 +15,14 @@ interface SubAgent {
   enabled: boolean;
 }
 
-export function StatusBar() {
+interface StatusBarProps {
+  threadId?: string;
+}
+
+export function StatusBar({ threadId }: StatusBarProps) {
   const [tools, setTools] = useState<Tool[]>([]);
   const [internalToolsCount, setInternalToolsCount] = useState<Record<string, number>>({});
-  const [mode, setMode] = useState<"fast" | "balanced">("balanced");
+  const [mode, setMode] = useState<"fast" | "balanced">("fast");
   const [agentMode, setAgentMode] = useState<"supervisor" | "single">("supervisor");
   const [subAgents, setSubAgents] = useState<SubAgent[]>([]);
   const [showToolsPopup, setShowToolsPopup] = useState(false);
@@ -25,22 +30,66 @@ export function StatusBar() {
   const [showAgentSelector, setShowAgentSelector] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showExamplesPopup, setShowExamplesPopup] = useState(false);
+  const [isInputEmpty, setIsInputEmpty] = useState(true);
   const [visibleItems, setVisibleItems] = useState<Set<string>>(new Set(['tools', 'mode', 'agents', 'connection']));
   const statusBarRef = useRef<HTMLDivElement>(null);
   const agentsPopupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const examplesPopupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Log threadId changes for debugging
+  useEffect(() => {
+    console.log('[StatusBar] threadId updated:', threadId);
+  }, [threadId]);
 
   useEffect(() => {
     loadTools();
     loadSubAgents();
   }, []);
 
-  // Cleanup timeout on unmount
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (agentsPopupTimeoutRef.current) {
         clearTimeout(agentsPopupTimeoutRef.current);
       }
+      if (examplesPopupTimeoutRef.current) {
+        clearTimeout(examplesPopupTimeoutRef.current);
+      }
     };
+  }, []);
+
+  // Monitor input field to detect if it's empty
+  useEffect(() => {
+    const checkInputEmpty = () => {
+      const inputField = document.getElementById('main-input_field');
+      if (inputField) {
+        const isEmpty = !inputField.textContent?.trim();
+        setIsInputEmpty(isEmpty);
+      }
+    };
+
+    // Check initially
+    checkInputEmpty();
+
+    // Set up observer to watch for changes
+    const inputField = document.getElementById('main-input_field');
+    if (inputField) {
+      const observer = new MutationObserver(checkInputEmpty);
+      observer.observe(inputField, {
+        characterData: true,
+        childList: true,
+        subtree: true,
+      });
+
+      // Also listen for input events
+      inputField.addEventListener('input', checkInputEmpty);
+
+      return () => {
+        observer.disconnect();
+        inputField.removeEventListener('input', checkInputEmpty);
+      };
+    }
   }, []);
 
   // Responsive behavior - hide items when container is too narrow
@@ -109,11 +158,16 @@ export function StatusBar() {
   const toggleMode = () => {
     const newMode = mode === "fast" ? "balanced" : "fast";
     setMode(newMode);
-    // Send mode change to backend
+    console.log('[StatusBar] toggleMode called with threadId:', threadId, 'newMode:', newMode);
+    // Send mode change to backend with thread_id
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (threadId) {
+      headers['X-Thread-ID'] = threadId;
+    }
     fetch('/api/config/mode', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: newMode }),
+      headers,
+      body: JSON.stringify({ mode: newMode, thread_id: threadId }),
     }).catch(err => console.error("Failed to update mode:", err));
   };
 
@@ -200,6 +254,35 @@ export function StatusBar() {
     setShowAgentsPopup(false);
   };
 
+  const handleExamplesMouseEnter = () => {
+    // Clear any pending hide timeout
+    if (examplesPopupTimeoutRef.current) {
+      clearTimeout(examplesPopupTimeoutRef.current);
+      examplesPopupTimeoutRef.current = null;
+    }
+    setShowExamplesPopup(true);
+  };
+
+  const handleExamplesMouseLeave = () => {
+    // Delay hiding the popup to allow mouse movement to the popup
+    examplesPopupTimeoutRef.current = setTimeout(() => {
+      setShowExamplesPopup(false);
+    }, 5000); // 5000ms (5 seconds) delay
+  };
+
+  const handleExamplesPopupMouseEnter = () => {
+    // Clear the hide timeout when mouse enters the popup
+    if (examplesPopupTimeoutRef.current) {
+      clearTimeout(examplesPopupTimeoutRef.current);
+      examplesPopupTimeoutRef.current = null;
+    }
+  };
+
+  const handleExamplesPopupMouseLeave = () => {
+    // Hide the popup when mouse leaves the popup area
+    setShowExamplesPopup(false);
+  };
+
   const connectedTools = tools.filter(t => t.status === "connected");
   const errorTools = tools.filter(t => t.status === "error");
   const activeAgents = subAgents.filter(a => a.enabled);
@@ -207,6 +290,19 @@ export function StatusBar() {
   const getSelectedAgentInfo = () => {
     if (!selectedAgent) return null;
     return subAgents.find(a => a.name === selectedAgent);
+  };
+
+  const handleExampleClick = (utterance: string) => {
+    // Send the utterance to the input field
+    const inputField = document.getElementById('main-input_field');
+    if (inputField) {
+      inputField.textContent = utterance;
+      inputField.focus();
+      // Trigger input event to update parent component
+      const event = new Event('input', { bubbles: true });
+      inputField.dispatchEvent(event);
+    }
+    setShowExamplesPopup(false);
   };
 
   // Get overflow items for the More menu
@@ -314,6 +410,42 @@ export function StatusBar() {
         </div>
 
         <div className="status-bar-center">
+        {/* Example Utterances */}
+        <div
+          className={`status-item status-examples ${isInputEmpty ? 'animate-prompt' : ''}`}
+          onMouseEnter={handleExamplesMouseEnter}
+          onMouseLeave={handleExamplesMouseLeave}
+        >
+          <Lightbulb size={14} className={isInputEmpty ? 'lightbulb-glow' : ''} />
+          <span className="status-label">Try these examples</span>
+          <span className="status-badge">{exampleUtterances.length}</span>
+
+          {showExamplesPopup && (
+            <div 
+              className="examples-popup"
+              onMouseEnter={handleExamplesPopupMouseEnter}
+              onMouseLeave={handleExamplesPopupMouseLeave}
+            >
+              <div className="examples-popup-header">
+                <span>Example Queries</span>
+                <span className="examples-count">{exampleUtterances.length} examples</span>
+              </div>
+              <div className="examples-list">
+                {exampleUtterances.map((utterance, index) => (
+                  <div
+                    key={index}
+                    className="example-item"
+                    onClick={() => handleExampleClick(utterance.text)}
+                  >
+                    <Lightbulb size={12} className="example-icon" />
+                    <span className="example-text">{utterance.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Tools Status */}
         {visibleItems.has('tools') && (
           <div
@@ -388,11 +520,27 @@ export function StatusBar() {
         {visibleItems.has('mode') && (
           <div className="status-item status-mode">
             <Zap size={14} />
-            <div className="mode-toggle" onClick={toggleMode}>
-              <div className={`mode-option ${mode === "fast" ? "active" : ""}`}>
+            <div className="mode-toggle">
+              <div 
+                className={`mode-option ${mode === "fast" ? "active" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (mode !== "fast") {
+                    toggleMode();
+                  }
+                }}
+              >
                 Lite
               </div>
-              <div className={`mode-option ${mode === "balanced" ? "active" : ""}`}>
+              <div 
+                className={`mode-option ${mode === "balanced" ? "active" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (mode !== "balanced") {
+                    toggleMode();
+                  }
+                }}
+              >
                 Balanced
               </div>
             </div>

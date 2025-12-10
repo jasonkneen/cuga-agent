@@ -143,8 +143,11 @@ class TaskAnalyzer(BaseNode):
         Returns:
             True if fast mode should be used
         """
-        # Check if fast mode is enabled in settings
-        if settings.advanced_features.lite_mode and settings.advanced_features.mode == 'api':
+        # Use state lite_mode if set, otherwise fallback to settings
+        lite_mode = state.lite_mode if state.lite_mode is not None else settings.advanced_features.lite_mode
+
+        # Check if fast mode is enabled
+        if lite_mode and settings.advanced_features.mode == 'api':
             total_tools = await count_total_tools()
             threshold = getattr(
                 settings.advanced_features,
@@ -154,7 +157,7 @@ class TaskAnalyzer(BaseNode):
 
             if total_tools < threshold:
                 logger.info(
-                    f"Fast mode enabled, mode is API, and total tools ({total_tools}) < threshold ({threshold}) - routing to CugaLite"
+                    f"Fast mode enabled (state={state.lite_mode}, settings={settings.advanced_features.lite_mode}), mode is API, and total tools ({total_tools}) < threshold ({threshold}) - routing to CugaLite"
                 )
                 return True
             else:
@@ -170,6 +173,10 @@ class TaskAnalyzer(BaseNode):
     ) -> Command[Literal['TaskDecompositionAgent', 'CugaLite', 'FinalAnswerAgent']]:
         # if not settings.features.chat:
         # state.variables_manager.reset()
+
+        # Apply sliding window to message history at the start of task analysis
+        state.apply_message_sliding_window()
+
         if await TaskAnalyzer.should_use_fast_mode_early(state):
             logger.info("Fast mode enabled - checking tool threshold")
             return Command(update=state.model_dump(), goto="CugaLite")

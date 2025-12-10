@@ -446,6 +446,11 @@ def start(
         "--sample-memory-data/--no-sample-memory-data",
         help="For demo_crm: Generate sample workspace files (cities.txt, company.txt) in cuga_workspace",
     ),
+    no_email: bool = typer.Option(
+        False,
+        "--no-email",
+        help="For demo_crm: Disable email services (email sink and email MCP server)",
+    ),
 ):
     """
     Start the specified service.
@@ -463,6 +468,7 @@ def start(
       cuga start demo_crm            # Start CRM demo with all required services
       cuga start demo_crm --read-only  # Start CRM demo with read-only filesystem
       cuga start demo_crm --sample-memory-data  # Seed workspace with sample memory data before CRM demo
+      cuga start demo_crm --no-email  # Start CRM demo without email services
       cuga start registry            # Start registry only
       cuga start appworld            # Start AppWorld servers
       cuga start memory              # Start memory service
@@ -591,23 +597,22 @@ def start(
                     logger.info(f"   • {file_path}")
 
             # Set hardcoded policies for demo_crm
-            policies_content = "## Plan\nwhen using filesystem use the `./cuga_workspace` dir only"
+            policies_content = "## Plan\nwhen using filesystem use the `./cuga_workspace` dir only\nwhen using crm make sure to go through all pages on queries that requires paginating all accounts etc\nwhen user asks questions about cuga then answer the question by first reading the filesystem information inside the file `./cuga_workspace/cuga_knowledge.md` then answer the question\nWhen user asks to use email templates assume it has <results> placehoder to replace with the results"
             os.environ["CUGA_POLICIES_CONTENT"] = policies_content
             os.environ["CUGA_LOAD_POLICIES"] = "true"
             logger.info("📋 Policies configured for demo_crm")
 
             # Clean up any existing processes on the ports we need
             logger.info("🧹 Checking for existing processes on required ports...")
-            kill_processes_by_port(
-                [
-                    1025,  # Email sink SMTP
-                    8000,  # Email MCP SSE
-                    8007,  # CRM API
-                    8112,  # Filesystem MCP SSE
-                    settings.server_ports.registry,
-                    settings.server_ports.demo,
-                ]
-            )
+            ports_to_clean = [
+                8007,  # CRM API
+                8112,  # Filesystem MCP SSE
+                settings.server_ports.registry,
+                settings.server_ports.demo,
+            ]
+            if not no_email:
+                ports_to_clean.extend([1025, 8000])  # Email sink SMTP, Email MCP SSE
+            kill_processes_by_port(ports_to_clean)
 
             # Set environment variable for host
             os.environ["CUGA_HOST"] = host
@@ -621,21 +626,37 @@ def start(
             else:
                 pass
 
-            # Start email sink first
-            run_direct_service(
-                "email-sink",
-                ["uvx", "--refresh", "--from", "./docs/examples/demo_apps/email_mcp/mail_sink", "email_sink"],
-            )
-            logger.info("Email sink started")
-            time.sleep(2)
+            # Start email services if not disabled
+            if not no_email:
+                # Start email sink first
+                run_direct_service(
+                    "email-sink",
+                    [
+                        "uvx",
+                        "--refresh",
+                        "--from",
+                        "./docs/examples/demo_apps/email_mcp/mail_sink",
+                        "email_sink",
+                    ],
+                )
+                logger.info("Email sink started")
+                time.sleep(2)
 
-            # Start email MCP server
-            run_direct_service(
-                "email-mcp",
-                ["uvx", "--refresh", "--from", "./docs/examples/demo_apps/email_mcp/mcp_server", "email_mcp"],
-            )
-            logger.info("Email MCP server started")
-            time.sleep(2)
+                # Start email MCP server
+                run_direct_service(
+                    "email-mcp",
+                    [
+                        "uvx",
+                        "--refresh",
+                        "--from",
+                        "./docs/examples/demo_apps/email_mcp/mcp_server",
+                        "email_mcp",
+                    ],
+                )
+                logger.info("Email MCP server started")
+                time.sleep(2)
+            else:
+                logger.info("Email services disabled (--no-email flag set)")
 
             # Start filesystem MCP server
             filesystem_cmd = [
@@ -661,8 +682,9 @@ def start(
             time.sleep(10)
 
             # Start registry with CRM configuration
+            config_file = "mcp_servers_hf.yaml" if no_email else "mcp_servers_crm.yaml"
             os.environ["MCP_SERVERS_FILE"] = os.path.join(
-                PACKAGE_ROOT, "backend", "tools_env", "registry", "config", "mcp_servers_crm.yaml"
+                PACKAGE_ROOT, "backend", "tools_env", "registry", "config", config_file
             )
             registry_process = run_direct_service(
                 "registry",
@@ -755,8 +777,9 @@ def start(
                 services_table = Table(show_header=False, box=None, padding=(0, 1))
                 services_table.add_column("Service", style="bold white", no_wrap=True)
                 services_table.add_column("URL", style="cyan")
-                services_table.add_row("• Email Sink", "smtp://localhost:1025")
-                services_table.add_row("• Email MCP Server", "http://localhost:8000/sse")
+                if not no_email:
+                    services_table.add_row("• Email Sink", "smtp://localhost:1025")
+                    services_table.add_row("• Email MCP Server", "http://localhost:8000/sse")
                 services_table.add_row("• Filesystem MCP Server", "http://localhost:8112/sse")
                 services_table.add_row("• CRM API Server", "http://localhost:8007")
                 services_table.add_row(

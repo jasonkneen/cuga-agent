@@ -242,6 +242,15 @@
   border-color: #cbd5e1;
 }
 
+.mode-toggle.disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.mode-toggle.disabled:hover {
+  border-color: #e5e7eb;
+}
+
 .mode-option {
   padding: 3px 10px;
   border-radius: 4px;
@@ -654,5 +663,161 @@
 
 .tool-group-items .tool-item:last-child {
   margin-bottom: 0;
+}
+
+/* Examples popup styles */
+.status-examples {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.status-examples:hover {
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.status-examples:hover .status-label {
+  color: #f59e0b;
+}
+
+.status-examples:hover .status-badge {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
+}
+
+/* Animated lightbulb when input is empty */
+.lightbulb-glow {
+  animation: lightbulbGlow 2s ease-in-out infinite;
+  color: #8b5cf6;
+}
+
+@keyframes lightbulbGlow {
+  0%, 100% {
+    color: #8b5cf6;
+    filter: drop-shadow(0 0 2px rgba(139, 92, 246, 0.4));
+    transform: scale(1);
+  }
+  50% {
+    color: #a78bfa;
+    filter: drop-shadow(0 0 4px rgba(167, 139, 250, 0.6));
+    transform: scale(1.1);
+  }
+}
+
+/* Animate the entire button when input is empty */
+.status-examples.animate-prompt {
+  animation: pulsePrompt 2s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes pulsePrompt {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+    background: transparent;
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.15);
+    background: rgba(139, 92, 246, 0.05);
+  }
+}
+
+/* Make the label slightly more prominent when animating */
+.status-examples.animate-prompt .status-label {
+  animation: labelPulse 2s ease-in-out infinite;
+}
+
+@keyframes labelPulse {
+  0%, 100% {
+    color: #475569;
+  }
+  50% {
+    color: #8b5cf6;
+  }
+}
+
+.examples-popup {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 450px;
+  max-width: 600px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  z-index: 1000;
+  animation: slideUpFadeIn 0.2s ease;
+}
+
+.examples-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-radius: 12px 12px 0 0;
+}
+
+.examples-popup-header span:first-child {
+  font-weight: 600;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.examples-count {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: rgba(146, 64, 14, 0.1);
+  border-radius: 12px;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.examples-list {
+  padding: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.example-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+}
+
+.example-item:hover {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #fbbf24;
+  transform: translateX(4px);
+}
+
+.example-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #f59e0b;
+}
+
+.example-item:hover .example-icon {
+  color: #d97706;
+}
+
+.example-text {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.example-item:hover .example-text {
+  color: #1e293b;
 }
 

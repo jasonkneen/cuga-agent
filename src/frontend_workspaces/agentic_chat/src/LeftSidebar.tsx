@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { MessageSquare, Database, ChevronLeft, ChevronRight, Plus, Trash2, Workflow, Info } from "lucide-react";
+import { MessageSquare, Database, ChevronLeft, ChevronRight, Plus, Trash2, Workflow, Info, HelpCircle } from "lucide-react";
 import "./LeftSidebar.css";
 import VariablesSidebar from "./VariablesSidebar";
 
@@ -40,6 +40,7 @@ interface LeftSidebarProps {
 }
 
 const ENABLE_CHAT_HISTORY = false;
+const ENABLE_SAVED_FLOWS = false;
 
 export function LeftSidebar({
   globalVariables,
@@ -221,14 +222,26 @@ export function LeftSidebar({
           >
             <Database size={16} />
             <span>Variables</span>
+            <div 
+              className="sidebar-tab-info-tooltip-wrapper"
+              onClick={(e) => e.stopPropagation()}
+              onMouseEnter={(e) => e.stopPropagation()}
+            >
+              <HelpCircle size={14} className="sidebar-info-icon" />
+              <div className="sidebar-tab-info-tooltip">
+                Variables are the results from task execution. Ask any question about the variables and CUGA will respond.
+              </div>
+            </div>
           </button>
-          <button
-            className={`sidebar-tab ${activeTab === "savedflows" ? "active" : ""}`}
-            onClick={() => onTabChange ? onTabChange("savedflows") : null}
-          >
-            <Workflow size={16} />
-            <span>Saved Flows</span>
-          </button>
+          {ENABLE_SAVED_FLOWS && (
+            <button
+              className={`sidebar-tab ${activeTab === "savedflows" ? "active" : ""}`}
+              onClick={() => onTabChange ? onTabChange("savedflows") : null}
+            >
+              <Workflow size={16} />
+              <span>Saved Flows</span>
+            </button>
+          )}
         </div>
         <button 
           className="left-sidebar-toggle"
@@ -290,7 +303,7 @@ export function LeftSidebar({
               onSelectAnswer={onSelectAnswer}
             />
           </div>
-        ) : (
+        ) : ENABLE_SAVED_FLOWS && activeTab === "savedflows" ? (
           <>
             <div className="conversations-list">
               {savedFlows.length === 0 ? (
@@ -381,7 +394,7 @@ export function LeftSidebar({
               )}
             </div>
           </>
-        )}
+        ) : null}
       </div>
       
       {hoveredFlowId && tooltipPosition && (

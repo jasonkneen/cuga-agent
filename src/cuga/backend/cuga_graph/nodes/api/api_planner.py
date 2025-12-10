@@ -118,9 +118,12 @@ class ApiPlanner(BaseNode):
         Returns:
             True if fast mode should be used
         """
-        if settings.advanced_features.lite_mode and settings.advanced_features.mode in ['api', 'hybrid']:
+        # Use state lite_mode if set, otherwise fallback to settings
+        lite_mode = state.lite_mode if state.lite_mode is not None else settings.advanced_features.lite_mode
+
+        if lite_mode and settings.advanced_features.mode in ['api', 'hybrid']:
             logger.info(
-                "Fast mode enabled and mode is API or Hybrid - routing to CugaLite from APIPlannerAgent"
+                f"Fast mode enabled (state={state.lite_mode}, settings={settings.advanced_features.lite_mode}) and mode is API or Hybrid - routing to CugaLite from APIPlannerAgent"
             )
             return True
         return False

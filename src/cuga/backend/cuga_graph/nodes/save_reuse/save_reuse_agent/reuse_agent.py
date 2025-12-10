@@ -175,5 +175,5 @@ class ReuseAgent(BaseAgent):
         # Use 15000 tokens for ReuseAgent to allow for long HTML generation
         return ReuseAgent(
             prompt_template=pmt,
-            llm=llm_manager.get_model(dyna_model, max_tokens=15000),
+            llm=llm_manager.get_model(dyna_model),
         )

@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Send, RotateCcw, Bot, User, FileText, Database, Code, Terminal, Cpu, Globe, Settings } from "lucide-react";
+import { Send, RotateCcw, Bot, User, FileText, Database, Code, Terminal, Cpu, Globe, Settings, ChevronRight } from "lucide-react";
 import CardManager from "./CardManager";
 import { StopButton } from "./floating/stop_button";
 import { fetchStreamingData } from "./StreamingWorkflow";
 import { DebugPanel } from "./DebugPanel";
+import { FollowupSuggestions } from "./FollowupSuggestions";
+import { exampleUtterances } from "./exampleUtterances";
 import "./CustomChat.css";
 
 interface Message {
@@ -30,10 +32,11 @@ interface CustomChatProps {
   onFileHover?: (filePath: string | null) => void;
   onMessageSent?: (message: string) => void;
   onChatStarted?: (started: boolean) => void;
+  onThreadIdChange?: (threadId: string) => void;
   initialChatStarted?: boolean;
 }
 
-export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHover, onMessageSent, onChatStarted, initialChatStarted = false }: CustomChatProps) {
+export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHover, onMessageSent, onChatStarted, onThreadIdChange, initialChatStarted = false }: CustomChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -49,8 +52,10 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
   const [threadId, setThreadId] = useState<string>("");
   const threadIdRef = useRef<string>("");
   const [showExampleUtterances, setShowExampleUtterances] = useState(true);
-  const [isInputFocused, setIsInputFocused] = useState(false);
   const [hasStartedChat, setHasStartedChat] = useState(initialChatStarted);
+  const [followupSuggestions, setFollowupSuggestions] = useState<string[]>([]);
+  const [lastUserQuery, setLastUserQuery] = useState<string>("");
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set(['contacts.txt']));
 
   // Notify parent when chat starts
   useEffect(() => {
@@ -59,20 +64,15 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
     }
   }, [hasStartedChat, onChatStarted]);
 
-  const exampleUtterances = [
-    "from contacts.txt show me which users belong to the crm system",
-    "send an email to example@gmail.com",
-    "list my emails",
-    "get top account by revenue from crm",
-    "show me accounts with revenue greater than 100000",
-  ];
-
   // Initialize threadId on mount
   useEffect(() => {
     const newThreadId = crypto.randomUUID();
     setThreadId(newThreadId);
     threadIdRef.current = newThreadId;
-  }, []);
+    if (onThreadIdChange) {
+      onThreadIdChange(newThreadId);
+    }
+  }, [onThreadIdChange]);
 
   // Create a simple chat instance interface
   const createChatInstance = useCallback((): ChatInstance => {
@@ -115,6 +115,52 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
       };
     }
   }, []);
+
+  // Listen for final answer completion from CardManager
+  useEffect(() => {
+    const handleFinalAnswerComplete = (() => {
+      console.log('[CustomChat] Received finalAnswerComplete event');
+      
+      // Generate followup suggestions based on the last query
+      if (lastUserQuery) {
+        const suggestions = generateFollowupSuggestions(lastUserQuery);
+        setFollowupSuggestions(suggestions);
+      }
+    }) as EventListener;
+
+    if (typeof window !== "undefined") {
+      console.log('[CustomChat] Setting up finalAnswerComplete event listener');
+      window.addEventListener('finalAnswerComplete', handleFinalAnswerComplete);
+      return () => {
+        console.log('[CustomChat] Cleaning up finalAnswerComplete event listener');
+        window.removeEventListener('finalAnswerComplete', handleFinalAnswerComplete);
+      };
+    }
+  }, [lastUserQuery]);
+
+  // Function to generate contextual followup suggestions
+  const generateFollowupSuggestions = (query: string): string[] => {
+    const lowerQuery = query.toLowerCase();
+    
+    // Exact match for the demo workflow
+    if (lowerQuery.includes('from contacts.txt show me which users belong to the crm system')) {
+      return [
+        "show me details of first one",
+        "Show me details of Sarah"
+      ];
+    }
+    
+    // Second level followups after showing details of a user/contact
+    if (lowerQuery.includes('show me details of') || lowerQuery.includes('details of sarah') || lowerQuery.includes('details of first one')) {
+      return [
+        "How many employees work at her company's account",
+        "Which percentile is her account's revenue across all accounts?"
+      ];
+    }
+
+    // Default general suggestions (disabled)
+    return [];
+  };
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -219,6 +265,12 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
     // Mark that chat has started
     setHasStartedChat(true);
 
+    // Save the query for followup suggestions
+    setLastUserQuery(processedText);
+
+    // Clear any existing followup suggestions
+    setFollowupSuggestions([]);
+
     // Notify parent component that a message was sent
     if (onMessageSent) {
       onMessageSent(processedText);
@@ -256,6 +308,10 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
         setThreadId(newThreadId);
         threadIdRef.current = newThreadId;
         console.log('[CustomChat] Generated new threadId:', newThreadId);
+        // Notify parent of new thread ID
+        if (onThreadIdChange) {
+          onThreadIdChange(newThreadId);
+        }
       }
       const finalThreadId = threadIdRef.current || threadId;
       console.log('[CustomChat] Sending message with threadId:', finalThreadId);
@@ -273,6 +329,11 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
     const newThreadId = crypto.randomUUID();
     setThreadId(newThreadId);
     threadIdRef.current = newThreadId;
+    
+    // Notify parent of new thread ID
+    if (onThreadIdChange) {
+      onThreadIdChange(newThreadId);
+    }
     
     try {
       await fetch('/reset', {
@@ -292,6 +353,8 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
     setIsProcessing(false);
     setInputValue("");
     setShowExampleUtterances(true);
+    setFollowupSuggestions([]);
+    setLastUserQuery("");
     
     // Create a fresh chat instance
     currentChatInstanceRef.current = createChatInstance();
@@ -303,11 +366,11 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
 
     setInputValue(text);
     
-    // Hide examples when user starts typing
+    // Hide examples when user starts typing, show when empty
     if (text.trim().length > 0) {
       setShowExampleUtterances(false);
     } else {
-      setShowExampleUtterances(isInputFocused);
+      setShowExampleUtterances(true);
     }
 
     // Check for @ trigger
@@ -539,21 +602,48 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
     }, 100);
   };
 
+  const handleFollowupClick = (suggestion: string) => {
+    if (!inputRef.current) return;
+    
+    // Set the input content to the suggestion
+    inputRef.current.textContent = suggestion;
+    setInputValue(suggestion);
+    
+    // Clear the followup suggestions
+    setFollowupSuggestions([]);
+    
+    // Focus the input
+    inputRef.current.focus();
+    
+    // Trigger input handler to update state
+    handleContentEditableInput({ currentTarget: inputRef.current } as any);
+    
+    // Auto-submit the followup question
+    setTimeout(() => {
+      handleSend();
+    }, 100);
+  };
+
+  const toggleFileExpand = (fileName: string) => {
+    setExpandedFiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fileName)) {
+        newSet.delete(fileName);
+      } else {
+        newSet.add(fileName);
+      }
+      return newSet;
+    });
+  };
+
   const handleInputFocus = () => {
-    setIsInputFocused(true);
     if (!inputValue.trim()) {
       setShowExampleUtterances(true);
     }
   };
 
   const handleInputBlur = () => {
-    setIsInputFocused(false);
-    // Delay hiding to allow click events on examples
-    setTimeout(() => {
-      if (!inputValue.trim()) {
-        setShowExampleUtterances(false);
-      }
-    }, 200);
+    // Don't hide examples on blur in advanced mode - keep them visible
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -637,9 +727,16 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
       }
     }
 
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+    // Handle Enter key: Send on Enter, new line on Shift+Enter
+    if (e.key === "Enter") {
+      if (e.shiftKey) {
+        // Allow new line with Shift+Enter
+        return;
+      } else {
+        // Send message on Enter without Shift
+        e.preventDefault();
+        handleSend();
+      }
     }
   };
 
@@ -688,6 +785,9 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                 <a href="https://discord.gg/UhNVTggG" target="_blank" rel="noopener noreferrer" className="nav-link">
                   Community
                 </a>
+                <a href="https://github.com/cuga-project/cuga-agent/issues/new" target="_blank" rel="noopener noreferrer" className="nav-link nav-link-feedback">
+                  Give Feedback
+                </a>
               </nav>
             </div>
           </header>
@@ -717,8 +817,8 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                       <p className="demo-app-tools">20 Tools Available</p>
                       <div className="demo-app-examples">
                         <span className="demo-app-tag">Get Accounts</span>
-                        <span className="demo-app-tag">Create Contact</span>
-                        <span className="demo-app-tag">Search Deals</span>
+                        <span className="demo-app-tag">Get Contacts</span>
+                        <span className="demo-app-tag">Get Leads</span>
                         <span className="demo-app-tag">+17 more</span>
                       </div>
                       <p className="demo-app-description">
@@ -727,7 +827,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                     </div>
                   </div>
 
-                  <div className="demo-app-card filesystem-card">
+                  <div className="demo-app-card filesystem-card filesystem-card-expanded">
                     <div className="demo-app-icon">
                       <FileText size={32} />
                     </div>
@@ -736,30 +836,39 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                       <p className="demo-app-tools">File Management</p>
                       <div className="demo-app-examples">
                         <span className="demo-app-tag">Read File</span>
-                        <span className="demo-app-tag">Write File</span>
-                        <span className="demo-app-tag">List Directory</span>
                       </div>
                       <p className="demo-app-description">
-                        Read, write, and manage files in the cuga_workspace directory
+                        Read files from the cuga_workspace directory
                       </p>
-                    </div>
-                  </div>
-
-                  <div className="demo-app-card email-card">
-                    <div className="demo-app-icon">
-                      <Terminal size={32} />
-                    </div>
-                    <div className="demo-app-card-content">
-                      <h3 className="demo-app-name">Email Service</h3>
-                      <p className="demo-app-tools">Email Operations</p>
-                      <div className="demo-app-examples">
-                        <span className="demo-app-tag">Send Email</span>
-                        <span className="demo-app-tag">List Emails</span>
-                        <span className="demo-app-tag">Search</span>
+                      
+                      <div className="workspace-files-preview">
+                        <div className="workspace-file-item">
+                          <div 
+                            className="workspace-file-header clickable"
+                            onClick={() => toggleFileExpand('contacts.txt')}
+                          >
+                            <ChevronRight 
+                              size={14} 
+                              className={`workspace-file-chevron ${expandedFiles.has('contacts.txt') ? 'expanded' : ''}`}
+                            />
+                            <FileText size={14} />
+                            <span className="workspace-file-name">contacts.txt</span>
+                            <span className="workspace-file-badge">7 contacts</span>
+                          </div>
+                          {expandedFiles.has('contacts.txt') && (
+                            <div className="workspace-file-content">
+                              <code>sarah.bell@gammadeltainc.partners.org</code>
+                              <code>sharon.jimenez@upsiloncorp.innovation.org</code>
+                              <code>ruth.ross@sigmasystems.operations.com</code>
+                              <span className="workspace-file-more">+4 more...</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="workspace-files-more">
+                          and 3 more files...
+                        </div>
                       </div>
-                      <p className="demo-app-description">
-                        Send and manage emails with full inbox integration
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -795,11 +904,12 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                           className="example-utterance-chip"
                           onMouseDown={(e) => {
                             e.preventDefault();
-                            handleExampleClick(utterance);
+                            handleExampleClick(utterance.text);
                           }}
                           type="button"
                         >
-                          {utterance}
+                          <div className="example-utterance-text">{utterance.text}</div>
+                          <div className="example-utterance-reason">{utterance.reason}</div>
                         </button>
                       ))}
                     </div>
@@ -830,7 +940,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                       onPaste={handlePaste}
                       onFocus={handleInputFocus}
                       onBlur={handleInputBlur}
-                      data-placeholder="Type your message... (use @ for file autocomplete - add multiple files)"
+                      data-placeholder="Type your message... (@ for files, Shift+Enter for new line)"
                       style={{
                         minHeight: "44px",
                         maxHeight: "120px",
@@ -838,6 +948,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                       }}
                     />
                   </div>
+                  <StopButton location="inline" />
                   <button
                     className="chat-send-btn"
                     onClick={handleSend}
@@ -864,7 +975,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                   <Bot size={32} />
                 </div>
                 <h3 className="feature-title">Multi-Agent System</h3>
-                <p className="feature-description">Specialized agents work together for planning, coding & execution</p>
+                <p className="feature-description">CUGA orchestrates specialized agents for planning, coding & execution</p>
               </div>
 
               <div className="feature-card">
@@ -872,7 +983,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                   <Terminal size={32} />
                 </div>
                 <h3 className="feature-title">Code Execution</h3>
-                <p className="feature-description">Write and run Python code in secure sandbox</p>
+                <p className="feature-description">CUGA writes and runs Python code in secure sandbox</p>
               </div>
 
               <div className="feature-card">
@@ -880,7 +991,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                   <Code size={32} />
                 </div>
                 <h3 className="feature-title">API Integration</h3>
-                <p className="feature-description">Connect any OpenAPI or MCP server instantly</p>
+                <p className="feature-description">Users can connect any OpenAPI or MCP server instantly</p>
               </div>
 
               <div className="feature-card">
@@ -888,7 +999,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                   <Database size={32} />
                 </div>
                 <h3 className="feature-title">Human in the Loop</h3>
-                <p className="feature-description">Followup questions on variables in memory and previous conversations</p>
+                <p className="feature-description">Users can ask followup questions on variables in memory and previous conversations</p>
               </div>
 
               <div className="feature-card">
@@ -896,7 +1007,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                   <Cpu size={32} />
                 </div>
                 <h3 className="feature-title">Model Flexibility</h3>
-                <p className="feature-description">Works with small models and open source models like GPT OSS 120B and Llama 4</p>
+                <p className="feature-description">CUGA works with small models and open source models like GPT OSS 120B and Llama 4</p>
               </div>
 
               <div className="feature-card">
@@ -904,7 +1015,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                   <Globe size={32} />
                 </div>
                 <h3 className="feature-title">Web & API Tasks</h3>
-                <p className="feature-description">Executes both web and API tasks seamlessly</p>
+                <p className="feature-description">CUGA executes both web and API tasks seamlessly</p>
               </div>
 
               <div className="feature-card">
@@ -912,7 +1023,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                   <Settings size={32} />
                 </div>
                 <h3 className="feature-title">Reasoning Modes</h3>
-                <p className="feature-description">Configurable reasoning modes: lite, balanced</p>
+                <p className="feature-description">Users can configure reasoning modes: lite, balanced</p>
               </div>
             </div>
           </div>
@@ -952,40 +1063,15 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
         </div>
       )}
 
-      {/* Stop button always visible */}
-      <StopButton location="sidebar" />
-
       {/* Input area only shown when chat has started */}
       {hasStartedChat && (
         <div className="custom-chat-input-area">
-
-          {!hasStartedChat && (
-            <div className="get-started-section">
-              <div className="section-header">
-                <h2 className="section-title">Get Started</h2>
-                <p className="section-subtitle">Try one of these examples or type your own request</p>
-              </div>
-
-              {showExampleUtterances && !inputValue.trim() && (
-                <div className="example-utterances-widget">
-                  <div className="example-utterances-list">
-                    {exampleUtterances.map((utterance, index) => (
-                      <button
-                        key={index}
-                        className="example-utterance-chip"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleExampleClick(utterance);
-                        }}
-                        type="button"
-                      >
-                        {utterance}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* Followup suggestions */}
+          {followupSuggestions.length > 0 && !isProcessing && (
+            <FollowupSuggestions
+              suggestions={followupSuggestions}
+              onSuggestionClick={handleFollowupClick}
+            />
           )}
 
           <div className="chat-input-wrapper">
@@ -1011,7 +1097,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                 onPaste={handlePaste}
                 onFocus={handleInputFocus}
                 onBlur={handleInputBlur}
-                data-placeholder="Type your message... (use @ for file autocomplete - add multiple files)"
+                data-placeholder="Type your message... (@ for files, Shift+Enter for new line)"
                 style={{
                   minHeight: "44px",
                   maxHeight: "120px",
@@ -1019,6 +1105,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                 }}
               />
             </div>
+            <StopButton location="inline" />
             <button
               className="chat-send-btn"
               onClick={handleSend}
@@ -1029,8 +1116,6 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
             </button>
           </div>
           </div>
-
-          {!hasStartedChat || (showExampleUtterances && !inputValue.trim() && hasStartedChat) ? null : null}
 
           {showFileAutocomplete && filteredFiles.length > 0 && (
             <div className="simple-file-autocomplete">
@@ -1078,7 +1163,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                     <Bot size={32} />
                   </div>
                   <h3 className="feature-title">Multi-Agent System</h3>
-                  <p className="feature-description">Specialized agents work together for planning, coding & execution</p>
+                  <p className="feature-description">CUGA orchestrates specialized agents for planning, coding & execution</p>
                 </div>
 
                 <div className="feature-card">
@@ -1086,7 +1171,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                     <Terminal size={32} />
                   </div>
                   <h3 className="feature-title">Code Execution</h3>
-                  <p className="feature-description">Write and run Python code in secure sandbox</p>
+                  <p className="feature-description">CUGA writes and runs Python code in secure sandbox</p>
                 </div>
 
                 <div className="feature-card">
@@ -1094,7 +1179,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                     <Code size={32} />
                   </div>
                   <h3 className="feature-title">API Integration</h3>
-                  <p className="feature-description">Connect any OpenAPI or MCP server instantly</p>
+                  <p className="feature-description">Users can connect any OpenAPI or MCP server instantly</p>
                 </div>
 
                 <div className="feature-card">
@@ -1102,7 +1187,7 @@ export function CustomChat({ onVariablesUpdate, onFileAutocompleteOpen, onFileHo
                     <Database size={32} />
                   </div>
                   <h3 className="feature-title">Smart Memory</h3>
-                  <p className="feature-description">Track variables and data across conversations</p>
+                  <p className="feature-description">CUGA tracks variables and data across conversations</p>
                 </div>
               </div>
             </div>

@@ -114,7 +114,7 @@ class CugaAgent:
         provider = ToolRegistryProvider(app_names=["digital_sales"])
         agent = CugaAgent(tool_provider=provider)
         await agent.initialize()
-        answer, metrics = await agent.execute("Get top accounts")
+        answer, metrics, state_messages, chat_messages = await agent.execute("Get top accounts")
         ```
 
     Usage with Direct Tools:
@@ -130,7 +130,7 @@ class CugaAgent:
         provider = DirectLangChainToolsProvider(tools=[my_tool])
         agent = CugaAgent(tool_provider=provider)
         await agent.initialize()
-        answer, metrics = await agent.execute("Use my tool")
+        answer, metrics, state_messages, chat_messages = await agent.execute("Use my tool")
         ```
 
     Usage with Custom Return Cases:
@@ -148,7 +148,7 @@ class CugaAgent:
             override_return_to_user_cases=custom_cases
         )
         await agent.initialize()
-        answer, metrics = await agent.execute("Delete account 123")
+        answer, metrics, state_messages, chat_messages = await agent.execute("Delete account 123")
         ```
     """
 
@@ -172,6 +172,7 @@ class CugaAgent:
         allow_user_clarification: bool = True,
         override_return_to_user_cases: Optional[List[str]] = None,
         instructions: Optional[str] = None,
+        task_loaded_from_file: bool = False,
     ):
         """
         Initialize CugaAgent.
@@ -186,6 +187,7 @@ class CugaAgent:
             override_return_to_user_cases: Optional list of custom cases (in natural language) when agent should return to user.
                                   If None, uses default cases. Example: ["Request user approval for destructive actions"]
             instructions: Optional special instructions to include in the system prompt.
+            task_loaded_from_file: If True, indicates that the task was loaded from a file (e.g., markdown file).
         """
         self.tool_provider = tool_provider
         self.model_settings = model_settings
@@ -195,6 +197,7 @@ class CugaAgent:
         self.allow_user_clarification = allow_user_clarification
         self.override_return_to_user_cases = override_return_to_user_cases
         self.instructions = instructions
+        self.task_loaded_from_file = task_loaded_from_file
 
         self.apps: List[AppDefinition] = []
         self.tools: List[StructuredTool] = []
@@ -227,7 +230,6 @@ class CugaAgent:
             model_config = self.model_settings
         else:
             model_config = settings.agent.code.model.copy()
-            model_config["max_tokens"] = 50000
             model_config["streaming"] = False
 
         model = llm_manager.get_model(model_config)
@@ -241,6 +243,8 @@ class CugaAgent:
                 allow_user_clarification=self.allow_user_clarification,
                 return_to_user_cases=self.override_return_to_user_cases,
                 instructions=self.instructions,
+                apps=self.apps,
+                task_loaded_from_file=self.task_loaded_from_file,
             )
 
         for tool in self.tools:
@@ -273,7 +277,7 @@ class CugaAgent:
         chat_messages: Optional[List[BaseMessage]] = None,
         initial_context: Optional[Dict[str, Any]] = None,
         keep_last_n_vars: int = 4,
-    ) -> Tuple[str, Dict[str, Any], Optional[List]]:
+    ) -> Tuple[str, Dict[str, Any], Optional[List], Optional[List[BaseMessage]]]:
         """
         Execute a task using the CodeAct agent.
 
@@ -287,7 +291,7 @@ class CugaAgent:
             keep_last_n_vars: Number of most recent variables to keep in context (default: 2)
 
         Returns:
-            Tuple of (answer, usage_metrics, state_messages)
+            Tuple of (answer, usage_metrics, state_messages, updated_chat_messages)
         """
         if not self.initialized:
             raise Exception("Agent not initialized. Call await agent.initialize() first")
@@ -431,14 +435,31 @@ class CugaAgent:
 
             final_answer = "No answer found"
             if final_state and "messages" in final_state:
-                # Find the last AI message
+                # Find the last AI message with non-empty content
                 for msg in reversed(final_state["messages"]):
                     logger.debug(f"Message: {msg}")
                     if hasattr(msg, "__class__") and "AIMessage" in str(msg.__class__):
                         content = msg.content if hasattr(msg, 'content') else str(msg)
                         logger.debug(f"Content: {content}")
-                        final_answer = content
-                        break
+                        # Only use non-empty content as final answer
+                        if content and content.strip():
+                            final_answer = content
+                            break
+
+                # If no text answer found, use the last execution output as the answer
+                if final_answer == "No answer found" and all_execution_outputs:
+                    # Extract the actual output (before the "New Variables" section)
+                    last_output = all_execution_outputs[-1]
+                    if "## New Variables Created:" in last_output:
+                        actual_output = last_output.split("## New Variables Created:")[0].strip()
+                    else:
+                        actual_output = last_output.strip()
+
+                    if actual_output:
+                        final_answer = actual_output
+                        logger.info(
+                            "Using last execution output as final answer (no text answer provided by agent)"
+                        )
 
             if show_progress:
                 print(f"\n{'=' * 60}")
@@ -476,15 +497,27 @@ class CugaAgent:
                     initial_var_names = set(initial_context.keys()) if initial_context else set()
                     new_var_names = [k for k in full_context.keys() if k not in initial_var_names]
 
-                    # Keep initial context variables
-                    final_context = {k: v for k, v in full_context.items() if k in initial_var_names}
+                    # Keep initial context variables (convert sets to lists for serialization)
+                    final_context = {}
+                    for k, v in full_context.items():
+                        if k in initial_var_names:
+                            if isinstance(v, set):
+                                final_context[k] = list(v)
+                                logger.debug(f"Converted set variable '{k}' to list in final_context")
+                            else:
+                                final_context[k] = v
 
                     # Apply keep_last_n_vars only to newly created variables
                     if keep_last_n_vars > 0 and len(new_var_names) > keep_last_n_vars:
                         # Keep only the last N newly created variables
                         vars_to_keep = new_var_names[-keep_last_n_vars:]
                         for var_name in vars_to_keep:
-                            final_context[var_name] = full_context[var_name]
+                            value = full_context[var_name]
+                            if isinstance(value, set):
+                                final_context[var_name] = list(value)
+                                logger.debug(f"Converted set variable '{var_name}' to list in final_context")
+                            else:
+                                final_context[var_name] = value
 
                         # Remove newly created variables that are not being kept from var_manager
                         from cuga.backend.cuga_graph.state.agent_state import VariablesManager
@@ -501,7 +534,12 @@ class CugaAgent:
                     else:
                         # Keep all newly created variables
                         for var_name in new_var_names:
-                            final_context[var_name] = full_context[var_name]
+                            value = full_context[var_name]
+                            if isinstance(value, set):
+                                final_context[var_name] = list(value)
+                                logger.debug(f"Converted set variable '{var_name}' to list in final_context")
+                            else:
+                                final_context[var_name] = value
                         logger.debug(
                             f"Preserving all {len(new_var_names)} newly created variables (plus {len(initial_var_names)} initial vars)"
                         )
@@ -526,23 +564,39 @@ class CugaAgent:
             if state_messages is None:
                 state_messages = []
 
-            return final_answer, usage_metrics, state_messages
+            # Convert final_state["messages"] back to chat_messages format for conversation history
+            updated_chat_messages = None
+            if final_state and "messages" in final_state and chat_messages is not None:
+                updated_chat_messages = []
+                for msg in final_state["messages"]:
+                    if isinstance(msg, dict):
+                        role = msg.get("role", "user")
+                        content = msg.get("content", "")
+                        if role == "user":
+                            updated_chat_messages.append(HumanMessage(content=content))
+                        elif role == "assistant":
+                            updated_chat_messages.append(AIMessage(content=content))
+                    elif isinstance(msg, (HumanMessage, AIMessage)):
+                        updated_chat_messages.append(msg)
+                logger.info(f"Converted {len(updated_chat_messages)} messages for chat history continuation")
+
+            return final_answer, usage_metrics, state_messages, updated_chat_messages
 
         except asyncio.TimeoutError:
             logger.error("Execution timeout")
             usage_metrics = metrics_callback.get_metrics()
             usage_metrics['error'] = 'timeout'
-            return "Error: Execution timeout", usage_metrics, state_messages
+            return "Error: Execution timeout", usage_metrics, state_messages, None
         except KeyboardInterrupt:
             logger.warning("Interrupted by user")
             usage_metrics = metrics_callback.get_metrics()
             usage_metrics['error'] = 'interrupted'
-            return "Error: Interrupted by user", usage_metrics, state_messages
+            return "Error: Interrupted by user", usage_metrics, state_messages, None
         except Exception as e:
             logger.error(f"Error during execution: {e}", exc_info=True)
             usage_metrics = metrics_callback.get_metrics()
             usage_metrics['error'] = str(e)
-            return f"Error during execution: {e}", usage_metrics, state_messages
+            return f"Error during execution: {e}", usage_metrics, state_messages, None
 
     def list_apps(self) -> List[Dict[str, str]]:
         """Get list of loaded apps."""
@@ -586,9 +640,9 @@ def _is_serializable(value: Any) -> bool:
     ):
         return False
 
-    # Allow common data types that are typically serializable
-    if isinstance(value, (bytes, set)):
-        return True
+    # Sets are not JSON serializable, so reject them
+    if isinstance(value, set):
+        return False
 
     # For other objects, try to check if they're basic types wrapped
     try:
@@ -687,7 +741,13 @@ async def __async_main():
 
 
 def create_mcp_prompt(
-    tools, base_prompt=None, allow_user_clarification=True, return_to_user_cases=None, instructions=None
+    tools,
+    base_prompt=None,
+    allow_user_clarification=True,
+    return_to_user_cases=None,
+    instructions=None,
+    apps=None,
+    task_loaded_from_file=False,
 ):
     """Create a prompt for CodeAct agent that works with MCP tools.
 
@@ -698,127 +758,17 @@ def create_mcp_prompt(
         return_to_user_cases: Optional list of custom cases (in natural language) when agent should return to user.
                              If None, uses default cases.
         instructions: Optional special instructions to include in the system prompt.
+        apps: Optional list of connected apps with their descriptions
+        task_loaded_from_file: If True, indicates that the task was loaded from a file
     """
     import json
+    from cuga.backend.llm.utils.helpers import load_one_prompt
 
-    prompt = f"{base_prompt}\n\n" if base_prompt else ""
-    prompt += """
-# ROLE
-You are a Python code execution agent. Your *only* purpose is to solve tasks by writing and executing Python code. You must use the provided tool functions to retrieve all necessary data.
-
-# INSTRUCTIONS
-
-## Output Format
-Your output MUST be one of these two types. Do not include *any* other text, explanation, or planning.
-
-**TYPE 1: Python Code Execution**
-- Output *only* a Python code snippet in a fenced code block (```python...```).
-- You MUST `await` all tool calls (they are async).
-- Use `print()` to output any data you need to see or use.
-- The print statement must be on a descriptive variable (not generic names like 'result' or 'data') defined before the print that represents the final output.
-- This is the only way to perform actions or retrieve data.
-
-**TYPE 2: Return to User with Text**
-- Output *only* plain text (NO code blocks)."""
-
-    if allow_user_clarification:
-        if return_to_user_cases:
-            prompt += """
-- Use this to return to the user when:
-"""
-            for case in return_to_user_cases:
-                prompt += f"  - {case}\n"
-        else:
-            prompt += """
-- Use this to return to the user with either:
-  - A complete final answer (when you have all necessary data from code execution)
-  - A request for clarification or missing parameters (when you need more information from the user)
-"""
-    else:
-        prompt += """
-- Use this *only* when you have all the data from code execution and can provide the complete, final answer.
-"""
-
-    if instructions:
-        prompt += f"""
-## Special Instructions
-{instructions}
-
-"""
-
-    prompt += """
-## Critical Rules
-1.  **NO PLANNING TEXT:** NEVER write explanations, planning steps, or conversational text. Do not write "I will...", "Let's...", "We need to...". Just write the code.
-2.  **DATA FROM TOOLS ONLY:** NEVER answer from your own knowledge. You MUST execute code that calls tools to get real data before providing a final answer.
-3.  **NO FUNCTION CALLING JSON:** NEVER output a JSON object for function calling. Your only valid outputs are a Python code block or a final text answer.
-4.  **USE `await`:** All tools are async. You MUST use `await` (e.g., `result = await digital_sales_get_my_accounts_my_accounts_get()`).
-5.  **CHECK VARIABLES:** Before calling a tool, check if variables from a previous code execution already contain the data you need.
-
----
-
-## Example: Correct vs. Incorrect Output
-
-❌ **INCORRECT (Do NOT do this):**
-"Okay, I need to get the list of accounts first. I'll call the `get_my_accounts` tool."
-```python
-my_accounts = await digital_sales_get_my_accounts_my_accounts_get()
-print(my_accounts)
-````
-
-✅ **CORRECT (Output *only* this):**
-
-```python
-my_accounts = await digital_sales_get_my_accounts_my_accounts_get()
-print(my_accounts)
-```
-
-❌ **INCORRECT (Do NOT do this):**
-{"name": "digital\_sales\_get\_my\_accounts\_my\_accounts\_get", "arguments": {}}
-
-✅ **CORRECT (Using variables from a previous run):**
-
-```python
-# Assumes 'my_accounts_data' exists from a previous execution
-high_value_accounts = [acc for acc in my_accounts_data['accounts'] if acc['revenue'] > 1000000]
-print(f"Found {len(high_value_accounts)} high-value accounts.")
-```
-
-✅ **CORRECT (Final Answer):**
-Based on the execution, there are 3 high-value accounts: "TechCorp" ($2.5M), "Innovate Ltd" ($1.8M), and "DataSolutions" ($1.2M).
-
------
-
-## Workflow
-"""
-
-    if allow_user_clarification:
-        prompt += """
-1.  Check if existing variables (from previous code execution) contain the answer.
-2.  If missing required parameters or information, return to user with a text request for clarification.
-3.  If not, write Python code (`python...`) that calls the necessary async tools to get the data.
-4.  After code execution provides all necessary data, return to user with the final answer (plain text).
-"""
-    else:
-        prompt += """
-1.  Check if existing variables (from previous code execution) contain the answer.
-2.  If not, write Python code (`python...`) that calls the necessary async tools to get the data.
-3.  After code execution provides all necessary data, return to user with the final answer (plain text).
-"""
-
-    prompt += """
------
-
-
-# AVAILABLE TOOLS
-
-The following async functions are available in your Python execution environment:
-"""
-
+    processed_tools = []
     for tool in tools:
         tool_name = tool.name if hasattr(tool, 'name') else str(tool)
         tool_desc = tool.description if hasattr(tool, 'description') else "No description"
 
-        # Get response_schemas and param_constraints from the function's custom attributes
         response_schemas = {}
         if hasattr(tool, 'func') and hasattr(tool.func, '_response_schemas'):
             response_schemas = tool.func._response_schemas
@@ -837,7 +787,6 @@ The following async functions are available in your Python execution environment
                 for name, prop in properties.items():
                     param_type = prop.get('type', 'Any')
 
-                    # Map JSON schema types to Python types
                     type_mapping = {
                         'string': 'str',
                         'integer': 'int',
@@ -867,14 +816,12 @@ The following async functions are available in your Python execution environment
         else:
             params_str = "**kwargs"
 
-        # Build response schema documentation
         response_doc = ""
         if response_schemas and isinstance(response_schemas, dict):
             if 'success' in response_schemas:
                 success_schema = json.dumps(response_schemas['success'], indent=4)
                 response_doc += f"\n    \n    Returns (on success) - Response Schema:\n{success_schema}"
 
-        # Format parameters nicely
         if params_str:
             params_list = []
             if hasattr(tool, 'args_schema') and tool.args_schema:
@@ -898,7 +845,6 @@ The following async functions are available in your Python execution environment
                         desc = prop.get('description', '')
                         required_mark = " (required)" if name in required else " (optional)"
 
-                        # Include constraints if available (from custom attribute or schema)
                         constraints = param_constraints.get(name, []) or prop.get('constraints', [])
                         constraints_str = ""
                         if constraints:
@@ -914,27 +860,35 @@ The following async functions are available in your Python execution environment
         else:
             params_doc = "No parameters required"
 
-        prompt += f"""### `{tool_name}({params_str})`
+        processed_tools.append(
+            {
+                'name': tool_name,
+                'description': tool_desc,
+                'params_str': params_str,
+                'params_doc': params_doc,
+                'response_doc': response_doc,
+            }
+        )
 
-{tool_desc}
+    processed_apps = []
+    if apps:
+        for app in apps:
+            processed_apps.append(
+                {
+                    'name': app.name,
+                    'type': getattr(app, 'type', 'api'),
+                    'description': getattr(app, 'description', 'No description available'),
+                }
+            )
 
-**Parameters:**
-{params_doc}
-{response_doc}
-
-**Returns:** Data directly (dict, list, etc.), not an HTTP response.
-
----\n\n"""
-
-    prompt += """
-
-
-# FINAL REMINDER
-
-  - Your output must be **EITHER** a Python code block **OR** a final text answer.
-  - **DO NOT** write planning text like "Let's do X", "We need to Y", "I'll Z".
-  - **DO NOT** write any text before or after your code block.
-  - Use `await` for all tool calls.
-  - Use real data from tools or existing variables.
-"""
+    prompt_template = load_one_prompt('prompts/mcp_prompt.jinja2')
+    prompt = prompt_template.format(
+        base_prompt=base_prompt,
+        apps=processed_apps,
+        allow_user_clarification=allow_user_clarification,
+        return_to_user_cases=return_to_user_cases,
+        instructions=instructions,
+        tools=processed_tools,
+        task_loaded_from_file=task_loaded_from_file,
+    )
     return prompt

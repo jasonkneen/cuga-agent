@@ -1,47 +1,47 @@
 [agent.task_decomposition.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 1000
+max_tokens = 16000
 
 [agent.planner.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 5000
+max_tokens = 16000
 
 [agent.chat.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 5000
+max_tokens = 16000
 
 [agent.shortlister.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 7000
+max_tokens = 16000
 
 [agent.plan_controller.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 6000
+max_tokens = 16000
 
 [agent.final_answer.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 15000
+max_tokens = 16000
 
 [agent.code.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 3000
+max_tokens = 16000
 
 [agent.code_planner.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 3000
+max_tokens = 16000
 
 [agent.qa.model]
 platform = "openai"
 temperature = 0.1
-max_tokens = 4000
+max_tokens = 16000
 
 [agent.action.model]
 platform = "openai"

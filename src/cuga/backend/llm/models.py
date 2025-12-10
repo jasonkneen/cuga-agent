@@ -65,14 +65,19 @@ class LLMManager:
         logger.info(f"Pre-instantiated model set: {type(model).__name__}")
 
     def _update_model_parameters(
-        self, model: BaseChatModel, temperature: float = 0.1, max_tokens: int = 1000
+        self,
+        model: BaseChatModel,
+        temperature: float = 0.1,
+        max_tokens: int = 1000,
+        max_completion_tokens: Optional[int] = None,
     ) -> BaseChatModel:
-        """Update model parameters (temperature and max_tokens) for the task
+        """Update model parameters (temperature, max_tokens, and max_completion_tokens) for the task
 
         Args:
             model: The model to update
             temperature: Temperature setting (default: 0.1)
             max_tokens: Maximum tokens for the task
+            max_completion_tokens: Maximum completion tokens for the task (defaults to max_tokens if not provided)
 
         Returns:
             Updated model with new parameters
@@ -91,19 +96,28 @@ class LLMManager:
         elif 'temperature' in model_kwargs:
             model_kwargs['temperature'] = temperature
 
+        # Set max_completion_tokens (defaults to max_tokens if not provided)
+        completion_tokens = max_completion_tokens if max_completion_tokens is not None else max_tokens
+
         # Update max_tokens
         if hasattr(model, 'max_tokens'):
             model.max_tokens = max_tokens
-        elif hasattr(model, 'max_completion_tokens'):
-            model.max_completion_tokens = max_tokens
         elif 'max_tokens' in model_kwargs:
             model_kwargs['max_tokens'] = max_tokens
+
+        # Update max_completion_tokens
+        if hasattr(model, 'max_completion_tokens'):
+            model.max_completion_tokens = completion_tokens
+        elif 'max_completion_tokens' in model_kwargs:
+            model_kwargs['max_completion_tokens'] = completion_tokens
 
         # Update model_kwargs if it exists
         if hasattr(model, 'model_kwargs') and model.model_kwargs is not None:
             model.model_kwargs = model_kwargs
 
-        logger.debug(f"Updated model parameters: temperature={temperature}, max_tokens={max_tokens}")
+        logger.debug(
+            f"Updated model parameters: temperature={temperature}, max_tokens={max_tokens}, max_completion_tokens={completion_tokens}"
+        )
         return model
 
     def clear_pre_instantiated_model(self) -> None:
@@ -300,13 +314,12 @@ class LLMManager:
         """Create LLM instance based on platform and settings"""
         platform = model_settings.get('platform')
         temperature = model_settings.get('temperature', 0.7)
-        max_tokens = model_settings.get('max_tokens', 1000)
-
+        max_tokens = model_settings.get('max_tokens')
+        assert max_tokens is not None, "max_tokens must be specified"
         # Handle environment variable overrides
         model_name = self._get_model_name(model_settings, platform)
         api_version = self._get_api_version(model_settings, platform)
         base_url = self._get_base_url(model_settings, platform)
-
         if platform == "azure":
             api_version = str(model_settings.get('api_version'))
             if model_name == "o3":
@@ -432,13 +445,14 @@ class LLMManager:
 
         return llm
 
-    def get_model(self, model_settings: Dict[str, Any], max_tokens: int = 1000):
+    def get_model(self, model_settings: Dict[str, Any]):
         """Get or create LLM instance for the given model settings
 
         Args:
-            model_settings: Model configuration dictionary
-            max_tokens: Maximum tokens for the task (default: 1000)
+            model_settings: Model configuration dictionary (must contain max_tokens)
         """
+        max_tokens = model_settings.get('max_tokens')
+        assert max_tokens is not None, "max_tokens must be specified in model_settings"
         # Check if pre-instantiated model is available
         if self._pre_instantiated_model is not None:
             logger.debug(f"Using pre-instantiated model: {type(self._pre_instantiated_model).__name__}")
@@ -463,7 +477,7 @@ class LLMManager:
             # Update parameters for the task
             cached_model = self._models[cache_key]
             updated_model = self._update_model_parameters(
-                cached_model, temperature=0.1, max_tokens=max_tokens
+                cached_model, temperature=0.1, max_tokens=max_tokens, max_completion_tokens=max_tokens
             )
             return updated_model
 

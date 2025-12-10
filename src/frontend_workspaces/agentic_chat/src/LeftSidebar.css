@@ -91,6 +91,84 @@
   box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
 }
 
+.sidebar-tab-info-tooltip-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+  cursor: help;
+}
+
+.sidebar-info-icon {
+  color: #94a3b8;
+  cursor: help;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.sidebar-tab:hover .sidebar-info-icon {
+  color: #4e00ec;
+}
+
+.sidebar-tab.active .sidebar-info-icon {
+  color: white;
+}
+
+.sidebar-tab-info-tooltip-wrapper:hover .sidebar-info-icon {
+  color: #4e00ec !important;
+}
+
+.sidebar-tab.active .sidebar-tab-info-tooltip-wrapper:hover .sidebar-info-icon {
+  color: #e0e7ff !important;
+}
+
+.sidebar-tab-info-tooltip {
+  position: fixed;
+  top: 60px;
+  left: 20px;
+  width: 320px;
+  max-width: calc(100vw - 40px);
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 2px solid #e0e7ff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #334155;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease;
+  z-index: 9999;
+  pointer-events: none;
+  transform-origin: top left;
+  font-weight: 500;
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.sidebar-tab-info-tooltip code {
+  background: #e0e7ff;
+  color: #4f46e5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sidebar-tab-info-tooltip-wrapper:hover .sidebar-tab-info-tooltip {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(2px);
+}
+
 .left-sidebar-toggle {
   width: 32px;
   min-width: 32px;

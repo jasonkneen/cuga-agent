@@ -64,12 +64,13 @@ export function App() {
     variables: Record<string, any>;
   }>>([]);
   const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
-  const [workspacePanelOpen, setWorkspacePanelOpen] = useState(false);
+  const [workspacePanelOpen, setWorkspacePanelOpen] = useState(true);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [highlightedFile, setHighlightedFile] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"conversations" | "variables" | "savedflows">("conversations");
   const [previousVariablesCount, setPreviousVariablesCount] = useState(0);
   const [previousHistoryLength, setPreviousHistoryLength] = useState(0);
+  const [threadId, setThreadId] = useState<string>("");
   const leftSidebarRef = useRef<{ addConversation: (title: string) => void } | null>(null);
   // Initialize hasStartedChat from URL query parameter immediately
   const [hasStartedChat, setHasStartedChat] = useState(() => {
@@ -223,6 +224,7 @@ export function App() {
               onMessageSent={handleMessageSent}
               onChatStarted={handleChatStarted}
               initialChatStarted={hasStartedChat}
+              onThreadIdChange={setThreadId}
             />
           </div>
           {hasStartedChat && (
@@ -233,7 +235,7 @@ export function App() {
             />
           )}
         </div>
-        {hasStartedChat && <StatusBar />}
+        {hasStartedChat && <StatusBar threadId={threadId} />}
         <FileAutocomplete
           onFileSelect={(path) => console.log("File selected:", path)}
           onAutocompleteOpen={() => setWorkspacePanelOpen(true)}

@@ -281,11 +281,11 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
         </div>
 
         <div className="config-modal-toolbar">
-          <button className="toolbar-btn" onClick={importConfig}>
+          <button className="toolbar-btn" onClick={importConfig} disabled title="Import disabled">
             <Upload size={14} />
             Import YAML
           </button>
-          <button className="toolbar-btn" onClick={exportConfig}>
+          <button className="toolbar-btn" onClick={exportConfig} disabled title="Export disabled">
             <Download size={14} />
             Export YAML
           </button>
@@ -342,7 +342,7 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
             <div className="mcp-servers-section">
               <div className="section-header">
                 <h3>MCP Servers</h3>
-                <button className="add-btn" onClick={addMcpServer}>
+                <button className="add-btn" onClick={addMcpServer} disabled title="Add server disabled">
                   <Plus size={16} />
                   Add Server
                 </button>
@@ -355,6 +355,8 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                     <button
                       className="delete-btn"
                       onClick={() => removeMcpServer(serverName)}
+                      disabled
+                      title="Delete disabled"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -368,6 +370,7 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                         onChange={(e) => updateMcpServer(serverName, "description", e.target.value)}
                         rows={2}
                         placeholder="Server description..."
+                        disabled
                       />
                     </div>
 
@@ -379,6 +382,7 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                           value={server.command || ""}
                           onChange={(e) => updateMcpServer(serverName, "command", e.target.value)}
                           placeholder="e.g., uv, python, node"
+                          disabled
                         />
                       </div>
 
@@ -387,6 +391,7 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                         <select
                           value={server.transport || "stdio"}
                           onChange={(e) => updateMcpServer(serverName, "transport", e.target.value)}
+                          disabled
                         >
                           <option value="stdio">stdio</option>
                           <option value="sse">sse</option>
@@ -398,7 +403,7 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                       <div className="form-group">
                         <div className="form-group-header">
                           <label>Arguments</label>
-                          <button className="add-small-btn" onClick={() => addArg(serverName)}>
+                          <button className="add-small-btn" onClick={() => addArg(serverName)} disabled title="Add argument disabled">
                             <Plus size={12} />
                             Add Arg
                           </button>
@@ -411,10 +416,13 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                                 value={arg}
                                 onChange={(e) => updateArg(serverName, index, e.target.value)}
                                 placeholder="Argument"
+                                disabled
                               />
                               <button
                                 className="remove-btn"
                                 onClick={() => removeArg(serverName, index)}
+                                disabled
+                                title="Remove disabled"
                               >
                                 <X size={14} />
                               </button>
@@ -432,6 +440,7 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                           value={server.url || ""}
                           onChange={(e) => updateMcpServer(serverName, "url", e.target.value)}
                           placeholder="http://localhost:8000/sse"
+                          disabled
                         />
                       </div>
                     )}
@@ -439,7 +448,7 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                     <div className="form-group">
                       <div className="form-group-header">
                         <label>Environment Variables</label>
-                        <button className="add-small-btn" onClick={() => addEnvVar(serverName)}>
+                        <button className="add-small-btn" onClick={() => addEnvVar(serverName)} disabled title="Add environment variable disabled">
                           <Plus size={12} />
                           Add Env
                         </button>
@@ -453,10 +462,13 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
                               value={value}
                               onChange={(e) => updateEnvVar(serverName, key, e.target.value)}
                               placeholder="Value"
+                              disabled
                             />
                             <button
                               className="remove-btn"
                               onClick={() => removeEnvVar(serverName, key)}
+                              disabled
+                              title="Remove disabled"
                             >
                               <X size={14} />
                             </button>
@@ -523,18 +535,16 @@ export default function ToolsConfig({ onClose }: ToolsConfigProps) {
 
         <div className="config-modal-footer">
           <button className="cancel-btn" onClick={onClose}>
-            Cancel
+            Close
           </button>
           <button 
             className={`save-btn ${saveStatus}`}
             onClick={saveConfig}
-            disabled={saveStatus === "saving"}
+            disabled
+            title="Save disabled - read-only mode"
           >
             <Save size={16} />
-            {saveStatus === "idle" && "Save Changes"}
-            {saveStatus === "saving" && "Saving..."}
-            {saveStatus === "success" && "Saved!"}
-            {saveStatus === "error" && "Error!"}
+            Save Changes
           </button>
         </div>
       </div>

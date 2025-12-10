@@ -1,0 +1,9 @@
+services:
+  - crm:
+      url: http://0.0.0.0:8007/openapi.json
+      description: CRM API provides sales professionals with a unified interface to access territory accounts, retrieve client information from TPP, manage job roles, and synchronize contacts between Zoominfo and Salesloft—streamlining the process of managing customer relationships and sales data across multiple platforms.
+mcpServers:
+  filesystem:
+    url: http://localhost:8112/sse
+    description: Standard file system operations for workspace management
+

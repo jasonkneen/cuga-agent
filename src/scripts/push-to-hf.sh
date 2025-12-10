@@ -7,6 +7,10 @@ echo "Push to Hugging Face (Clean)"
 echo "=========================================="
 echo ""
 
+# Configuration
+REMOTE_NAME=${1:-hf}
+echo "Target remote: $REMOTE_NAME"
+
 # Remember current branch before switching
 ORIGINAL_BRANCH=$(git branch --show-current)
 if [ -z "$ORIGINAL_BRANCH" ]; then
@@ -69,8 +73,8 @@ git commit --no-verify -m "feat: docker-v1 with optimized frontend
 }
 
 echo ""
-echo "🚀 Pushing to hf/main..."
-git push hf $TEMP_BRANCH:main --force
+echo "🚀 Pushing to $REMOTE_NAME/main..."
+git push $REMOTE_NAME $TEMP_BRANCH:main --force
 
 if [ $? -eq 0 ]; then
   echo ""

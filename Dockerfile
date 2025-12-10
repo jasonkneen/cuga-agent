@@ -26,15 +26,14 @@ COPY docs/ ./docs/
 # Install dependencies
 RUN uv sync
 
-# Create cuga_workspace directory and contacts.txt file
-RUN mkdir -p /app/cuga_workspace && \
-    echo "sarah.bell@gammadeltainc.partners.org" > /app/cuga_workspace/contacts.txt && \
-    echo "sharon.jimenez@upsiloncorp.innovation.org" >> /app/cuga_workspace/contacts.txt && \
-    echo "ruth.ross@sigmasystems.operations.com" >> /app/cuga_workspace/contacts.txt && \
-    echo "dorothy.richardson@nextgencorp.gmail.com" >> /app/cuga_workspace/contacts.txt && \
-    echo "james.richardson@technovate.com" >> /app/cuga_workspace/contacts.txt && \
-    echo "michael.torres@pinnacle-solutions.net" >> /app/cuga_workspace/contacts.txt && \
-    echo "emma.larsson@nexus-digital.co" >> /app/cuga_workspace/contacts.txt
+# Create cuga_workspace directory
+RUN mkdir -p /app/cuga_workspace
+
+# Copy example files from huggingface examples
+COPY docs/examples/huggingface/contacts.txt /app/cuga_workspace/contacts.txt
+COPY docs/examples/huggingface/cuga_knowledge.md /app/cuga_workspace/cuga_knowledge.md
+COPY docs/examples/huggingface/cuga_playbook.md /app/cuga_workspace/cuga_playbook.md
+COPY docs/examples/huggingface/email_template.md /app/cuga_workspace/email_template.md
 
 # Expose port 7860 (Hugging Face Spaces default)
 EXPOSE 7860
@@ -45,6 +44,6 @@ ENV CUGA_HOST=0.0.0.0
 # Override the demo port to match HF Spaces
 ENV DYNACONF_SERVER_PORTS__DEMO=7860
 
-# Start the demo_crm service with read-only filesystem
-CMD ["uv", "run", "cuga", "start", "demo_crm", "--host", "0.0.0.0", "--read-only"]
+# Start the demo_crm service with read-only filesystem and no email services
+CMD ["uv", "run", "cuga", "start", "demo_crm", "--host", "0.0.0.0", "--read-only", "--no-email"]
 

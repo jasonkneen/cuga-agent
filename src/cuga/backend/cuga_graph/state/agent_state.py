@@ -848,6 +848,7 @@ class AgentState(BaseModel):
     user_id: Optional[str] = "default"  # TODO: this should be updated in multi user scenario
     thread_id: Optional[str] = None  # Thread ID for multi-user isolation
     current_datetime: Optional[str] = ""
+    lite_mode: Optional[bool] = None  # If set, overrides settings.advanced_features.lite_mode
     variables_storage: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     variable_counter_state: int = 0
     variable_creation_order: List[str] = Field(default_factory=list)
@@ -925,6 +926,22 @@ class AgentState(BaseModel):
         # msg = self.chat_agent_messages[-1]
         # # Update the last message with appended content
         self.chat_agent_messages[-1].content += value
+
+    def apply_message_sliding_window(self):
+        """Apply sliding window to maintain only recent messages based on configured limit."""
+        limit = settings.advanced_features.message_window_limit
+
+        if self.chat_messages and len(self.chat_messages) > limit:
+            logger.info(
+                f"Applying sliding window: trimming chat_messages from {len(self.chat_messages)} to {limit}"
+            )
+            self.chat_messages = self.chat_messages[-limit:]
+
+        if self.chat_agent_messages and len(self.chat_agent_messages) > limit:
+            logger.info(
+                f"Applying sliding window: trimming chat_agent_messages from {len(self.chat_agent_messages)} to {limit}"
+            )
+            self.chat_agent_messages = self.chat_agent_messages[-limit:]
 
     def format_subtask(self):
         return "{} (type = '{}', app='{}')".format(self.sub_task, self.sub_task_type, self.sub_task_app[:30])

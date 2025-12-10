@@ -30,40 +30,54 @@ export const StopButton: React.FC<StopButtonProps> = ({ location = "sidebar" }) 
     return null;
   }
 
+  const isInline = location === "inline";
+  
   return (
     <div className="floating-controls-container">
       <button
         onClick={handleStop}
-        // className="floating-toggle"
+        className={isInline ? "stop-button-inline" : "stop-button-floating"}
         style={{
-          color: "black",
-          border: "#c6c6c6 solid 1px",
-          backgroundColor: "white",
+          color: isInline ? "white" : "black",
+          border: isInline ? "none" : "#c6c6c6 solid 1px",
+          backgroundColor: isInline ? "#ef4444" : "white",
           marginLeft: "auto",
           marginRight: "auto",
-          opacity: "0.6",
-          fontWeight: "400",
-          borderRadius: "4px",
-          marginBottom: "6px",
-          padding: "8px 16px",
+          opacity: isInline ? "1" : "0.6",
+          fontWeight: "500",
+          borderRadius: isInline ? "8px" : "4px",
+          marginBottom: isInline ? "0" : "6px",
+          padding: isInline ? "8px 12px" : "8px 16px",
           cursor: "pointer",
-          fontSize: "14px",
+          fontSize: isInline ? "13px" : "14px",
           display: "flex",
           alignItems: "center",
           gap: "6px",
+          transition: "all 0.2s ease",
+          flexShrink: 0,
         }}
         onMouseOver={(e) => {
-          e.currentTarget.style.backgroundColor = "black";
-          e.currentTarget.style.color = "white";
-          e.currentTarget.style.opacity = "1";
+          if (isInline) {
+            e.currentTarget.style.backgroundColor = "#dc2626";
+            e.currentTarget.style.transform = "scale(1.05)";
+          } else {
+            e.currentTarget.style.backgroundColor = "black";
+            e.currentTarget.style.color = "white";
+            e.currentTarget.style.opacity = "1";
+          }
         }}
         onMouseOut={(e) => {
-          e.currentTarget.style.backgroundColor = "";
-          e.currentTarget.style.color = "black";
-          e.currentTarget.style.opacity = "0.6";
+          if (isInline) {
+            e.currentTarget.style.backgroundColor = "#ef4444";
+            e.currentTarget.style.transform = "scale(1)";
+          } else {
+            e.currentTarget.style.backgroundColor = "";
+            e.currentTarget.style.color = "black";
+            e.currentTarget.style.opacity = "0.6";
+          }
         }}
       >
-        Stop Processing
+        {isInline ? "Stop" : "Stop Processing"}
       </button>
     </div>
   );

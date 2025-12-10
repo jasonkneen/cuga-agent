@@ -143,6 +143,7 @@ class ChatNode(BaseNode):
 
         # If chat feature is disabled, go directly to task analyzer
         if not settings.features.chat:
+            state.sender = name
             return Command(update=state.model_dump(), goto=NodeNames.TASK_ANALYZER_AGENT)
 
         # Process chat input

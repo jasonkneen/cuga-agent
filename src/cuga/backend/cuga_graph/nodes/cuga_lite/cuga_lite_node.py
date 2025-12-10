@@ -33,6 +33,18 @@ from cuga.configurations.instructions_manager import get_all_instructions_format
 tracker = ActivityTracker()
 
 
+def _convert_sets_to_lists(value: Any) -> Any:
+    """Recursively convert sets to lists for JSON serialization."""
+    if isinstance(value, set):
+        return list(value)
+    elif isinstance(value, dict):
+        return {k: _convert_sets_to_lists(v) for k, v in value.items()}
+    elif isinstance(value, (list, tuple)):
+        return [_convert_sets_to_lists(item) for item in value]
+    else:
+        return value
+
+
 class CugaLiteOutput(BaseModel):
     """Output model for CugaLite execution (similar to CodeAgentOutput)."""
 
@@ -52,7 +64,43 @@ class CugaLiteNode(BaseNode):
         self.name = "CugaLite"
         self.langfuse_handler = langfuse_handler
 
-    async def create_agent(self, app_names=None):
+    @staticmethod
+    async def read_text_file(file_path: str) -> Optional[str]:
+        """Read text file content using filesystem tool via registry.
+
+        Args:
+            file_path: Path to the file to read
+
+        Returns:
+            File content as string, or None if failed
+        """
+        try:
+            from cuga.backend.cuga_graph.nodes.cuga_lite.tool_registry_provider import call_api
+
+            result = await call_api(
+                app_name="filesystem", api_name="filesystem_read_text_file", args={"path": file_path}
+            )
+
+            if isinstance(result, dict):
+                if "error" in result:
+                    logger.error(f"Error reading file {file_path}: {result['error']}")
+                    return None
+                if "result" in result:
+                    return result["result"]
+                if "content" in result:
+                    return result["content"]
+                return str(result)
+            elif isinstance(result, str):
+                return result
+            else:
+                logger.error(f"Unexpected result type from read_text_file: {type(result)}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Exception reading file {file_path}: {e}")
+            return None
+
+    async def create_agent(self, app_names=None, task_loaded_from_file=False):
         """Create and initialize a new CugaAgent with optional app filtering."""
         logger.info("Initializing new CugaLite agent instance...")
 
@@ -68,6 +116,7 @@ class CugaLiteNode(BaseNode):
             app_names=app_names,
             langfuse_handler=langfuse_handler,
             instructions=get_all_instructions_formatted(),
+            task_loaded_from_file=task_loaded_from_file,
         )
         await agent.initialize()
         logger.info(f"CugaLite agent initialized with {len(agent.tools)} tools")
@@ -85,22 +134,44 @@ class CugaLiteNode(BaseNode):
         logger.info(f"CugaLite executing task: {state.input}")
 
         # Add initialization message
-        state.messages.append(
-            AIMessage(
-                content=json.dumps(
-                    {
-                        "status": "initializing",
-                        "message": f"Initializing CugaLite with {len(state.api_intent_relevant_apps) if state.api_intent_relevant_apps else 'all'} apps",
-                    }
-                )
-            )
-        )
+        # state.messages.append(
+        #     AIMessage(
+        #         content=json.dumps(
+        #             {
+        #                 "status": "initializing",
+        #                 "message": f"Initializing CugaLite with {len(state.api_intent_relevant_apps) if state.api_intent_relevant_apps else 'all'} apps",
+        #             }
+        #         )
+        #     )
+        # )
 
         # Extract app names if available
         app_names = None
 
         # Use sub_task as the input if available (preferred over state.input)
         task_input = state.sub_task if state.sub_task else state.input
+
+        # Check if task_input is just a markdown file path and replace with file content
+        task_loaded_from_file = False
+        task_input_stripped = task_input.strip()
+        if (
+            task_input_stripped.endswith('.md')
+            and '\n' not in task_input_stripped
+            and ' ' not in task_input_stripped
+        ):
+            logger.info(f"Detected markdown file path: {task_input_stripped}")
+            try:
+                file_content = await self.read_text_file(task_input_stripped)
+                if file_content:
+                    task_input = file_content
+                    task_loaded_from_file = True
+                    logger.info(f"Replaced task input with file content from {task_input_stripped}")
+                else:
+                    logger.warning(f"Failed to read file {task_input_stripped}, using original task input")
+            except Exception as e:
+                logger.warning(
+                    f"Error reading markdown file {task_input_stripped}: {e}, using original task input"
+                )
 
         # Determine app configuration
         if state.sub_task_app:
@@ -111,7 +182,7 @@ class CugaLiteNode(BaseNode):
             logger.info(f"Using apps from state.api_intent_relevant_apps: {app_names}")
 
         # Create a local agent instance for this execution
-        agent = await self.create_agent(app_names=app_names)
+        agent = await self.create_agent(app_names=app_names, task_loaded_from_file=task_loaded_from_file)
 
         # Add execution start message
         state.messages.append(
@@ -128,7 +199,14 @@ class CugaLiteNode(BaseNode):
 
         # Get current variables from state to pass as initial context
         initial_var_names = state.variables_manager.get_variable_names()
-        initial_context = {name: state.variables_manager.get_variable(name) for name in initial_var_names}
+        initial_context = {}
+        for name in initial_var_names:
+            value = state.variables_manager.get_variable(name)
+            # Convert sets to lists for JSON serialization (recursively)
+            converted_value = _convert_sets_to_lists(value)
+            if value is not converted_value and isinstance(value, set):
+                logger.debug(f"Converted set variable '{name}' to list for serialization")
+            initial_context[name] = converted_value
 
         logger.info(f"Passing {len(initial_context)} variables to CugaAgent as initial context")
         logger.info(f"Variable names: {initial_var_names}")
@@ -139,13 +217,23 @@ class CugaLiteNode(BaseNode):
         logger.info(f"Variables summary: {state.variables_manager.get_variables_summary()}")
 
         # Execute the task - messages will be added automatically by CugaAgent
-        answer, metrics, updated_messages = await agent.execute(
+        # Always pass chat_messages (even if empty list) to enable conversation tracking
+        # Only pass None if explicitly not set
+        chat_messages_to_pass = state.chat_messages
+        logger.info(
+            f"Before execute: state.chat_messages has {len(chat_messages_to_pass) if chat_messages_to_pass is not None else 'None'} messages"
+        )
+        logger.debug(f"chat_messages content: {chat_messages_to_pass}")
+        answer, metrics, updated_state_messages, updated_chat_messages = await agent.execute(
             task_input,
             recursion_limit=15,
             show_progress=False,
             state_messages=state.messages,
-            chat_messages=state.chat_messages if state.chat_messages else None,
+            chat_messages=chat_messages_to_pass,
             initial_context=initial_context,
+        )
+        logger.info(
+            f"After execute: updated_chat_messages has {len(updated_chat_messages) if updated_chat_messages is not None else 'None'} messages"
         )
 
         # Check if execution failed (graph-level errors or code execution errors)
@@ -194,14 +282,17 @@ class CugaLiteNode(BaseNode):
                 logger.info("CugaLite execution failed, proceeding to FinalAnswerAgent with error")
                 return Command(update=state.model_dump(), goto="FinalAnswerAgent")
 
-        # Update chat_messages with the updated messages from execution
-        if updated_messages:
-            state.chat_messages = updated_messages
+        # Update chat_messages with the updated chat conversation messages from execution
+        if updated_chat_messages is not None:
+            state.chat_messages = updated_chat_messages
+            logger.info(
+                f"Updated chat_messages with {len(updated_chat_messages)} messages for conversation history"
+            )
 
-        # Extract updated context from messages and sync to var_manager
+        # Extract updated context from state messages (not chat messages) and sync to var_manager
         updated_variables = {}
-        if updated_messages:
-            for msg in reversed(updated_messages):
+        if updated_state_messages:
+            for msg in reversed(updated_state_messages):
                 if (
                     isinstance(msg, AIMessage)
                     and hasattr(msg, 'additional_kwargs')
@@ -251,6 +342,30 @@ class CugaLiteNode(BaseNode):
         logger.info(
             f"Steps: {metrics.get('step_count', 0) if metrics else 0}, Tokens: {metrics.get('total_tokens', 0) if metrics else 0}"
         )
+
+        # Check if answer is empty and provide a fallback
+        if not answer or not answer.strip():
+            logger.warning("Empty final answer detected from CugaAgent, using fallback")
+            # Use the last variable's value as fallback answer
+            if new_var_names and updated_variables:
+                last_var_name = new_var_names[-1]
+                last_var_value = updated_variables.get(last_var_name)
+                if last_var_value is not None:
+                    # Format the value nicely
+                    if isinstance(last_var_value, (list, dict)):
+                        try:
+                            answer = json.dumps(last_var_value, indent=2, default=str)
+                        except Exception:
+                            answer = str(last_var_value)
+                    else:
+                        answer = str(last_var_value)
+                    logger.info(f"Using last variable '{last_var_name}' value as fallback answer")
+                else:
+                    answer = "Task completed successfully."
+                    logger.info("Using generic fallback answer (variable value is None)")
+            else:
+                answer = "Task completed successfully."
+                logger.info("Using generic fallback answer (no variables)")
 
         # Log Langfuse trace ID if available
         if agent and self.langfuse_handler:

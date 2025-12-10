@@ -29,7 +29,12 @@ class LoadTest(BaseTestServerStream):
             if response.status_code == 200:
                 return response.json()
             elif response.status_code == 503:
-                return {"state": None, "variables": {}, "variables_count": 0}
+                return {
+                    "state": None,
+                    "variables": {},
+                    "variables_count": 0,
+                    "chat_messages_count": 0,
+                }
             else:
                 raise Exception(f"Failed to get state: {response.status_code} - {response.text}")
 
@@ -38,18 +43,24 @@ class LoadTest(BaseTestServerStream):
     ) -> tuple[bool, str]:
         """
         Validate that this thread's state is isolated from other threads.
-        Checks that threads that have completed have their own variable storage.
+        Checks that threads that have completed have their own variable storage and chat messages.
         Returns (is_valid, error_message)
         """
         try:
             state_response = await self.get_agent_state(thread_id)
             my_variables = state_response.get("variables", {})
+            my_chat_messages_count = state_response.get("chat_messages_count", 0)
 
             # Check that we actually have variables
             if not my_variables:
                 return False, f"User {user_id}: No variables found in state"
 
-            # For each other thread that has completed, verify they have their own variables
+            # Check that we have chat messages
+            if my_chat_messages_count == 0:
+                return False, f"User {user_id}: No chat_messages found in state"
+
+
+            # For each other thread that has completed, verify they have their own variables and chat messages
             # Even if variable names are the same (they're doing the same task),
             # each thread should have its own storage
             for other_thread_id in other_thread_ids:
@@ -58,8 +69,8 @@ class LoadTest(BaseTestServerStream):
 
                 await self.get_agent_state(other_thread_id)
 
-                # If other thread has variables, that's good - it means it has its own storage
-                # The key test is that initial state was empty and final state has variables
+                # If other thread has variables and chat messages, that's good - it means it has its own storage
+                # The key test is that initial state was empty and final state has variables and messages
                 # This already proves isolation via LangGraph's checkpointer
 
             return True, ""
@@ -82,12 +93,18 @@ class LoadTest(BaseTestServerStream):
             # Validate state is empty at start
             initial_state = await self.get_agent_state(thread_id)
             initial_variables_count = initial_state.get("variables_count", 0)
+            initial_chat_messages_count = initial_state.get("chat_messages_count", 0)
+
             if initial_variables_count > 0:
                 return (
                     False,
                     f"User {user_id}: State should be empty at start, but found {initial_variables_count} variables",
                 )
-            print(f"User {user_id}: ✓ Initial state is empty (variables_count: {initial_variables_count})")
+            if initial_chat_messages_count > 0:
+                return (
+                    False,
+                    f"User {user_id}: chat_messages should be empty at start, but found {initial_chat_messages_count}",
+                )
 
             # We need to manually implement run_task here to pass headers
             # BaseTestServerStream.run_task doesn't support custom headers easily without modification
@@ -142,15 +159,25 @@ class LoadTest(BaseTestServerStream):
                         f"User {user_id}: Answer missing keyword '{keyword}'. Got: {answer_data}",
                     )
 
-            # Validate state after completion has variables
+            # Wait a moment for the graph to checkpoint the final state
+            # LangGraph checkpoints state after node completion, not during execution
+            await asyncio.sleep(2)
+
+            # Validate state after completion has variables and chat messages
             final_state = await self.get_agent_state(thread_id)
             final_variables_count = final_state.get("variables_count", 0)
+            final_chat_messages_count = final_state.get("chat_messages_count", 0)
+
             if final_variables_count == 0:
                 return (
                     False,
                     f"User {user_id}: State should have variables after completion, but found 0 variables",
                 )
-            print(f"User {user_id}: ✓ Final state has variables (variables_count: {final_variables_count})")
+            if final_chat_messages_count == 0:
+                return (
+                    False,
+                    f"User {user_id}: State should have chat_messages after completion, but found 0",
+                )
 
             # Validate isolation from other threads
             other_thread_ids = [tid for tid in all_thread_ids if tid != thread_id]

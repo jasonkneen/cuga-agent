@@ -436,15 +436,18 @@ class BaseTestServerStream(unittest.IsolatedAsyncioTestCase):
         stop_on_answer: bool = True,
         timeout: Optional[float] = None,
         verbose: bool = True,
+        thread_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Helper function to run a streaming task and return all events.
 
         Args:
             query: The query string to send to the stream endpoint
+            followup_response: Optional followup response for continuation
             stop_on_answer: Whether to stop streaming when "Answer" event is received
             timeout: Optional timeout for the entire operation
             verbose: Whether to print event details during streaming
+            thread_id: Optional thread ID to maintain conversation context
 
         Returns:
             List of event dictionaries with 'event' and 'data' keys
@@ -453,6 +456,8 @@ class BaseTestServerStream(unittest.IsolatedAsyncioTestCase):
 
         if verbose:
             print(f"\n--- Running task for query: '{query}' ---")
+            if thread_id:
+                print(f"Using thread ID: {thread_id}")
 
         try:
             if verbose:
@@ -460,12 +465,17 @@ class BaseTestServerStream(unittest.IsolatedAsyncioTestCase):
 
             client_timeout = httpx.Timeout(timeout) if timeout else None
 
+            # Build headers
+            headers = {"Accept": "text/event-stream"}
+            if thread_id:
+                headers["X-Thread-ID"] = thread_id
+
             async with httpx.AsyncClient(timeout=client_timeout) as client:
                 async with client.stream(
                     "POST",
                     STREAM_ENDPOINT,
                     json={"query": query} if query and query != "" else followup_response.model_dump(),
-                    headers={"Accept": "text/event-stream"},
+                    headers=headers,
                 ) as response:
                     response.raise_for_status()
 

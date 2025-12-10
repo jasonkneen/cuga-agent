@@ -31,6 +31,8 @@ enable_memory = false
 enable_fact = false
 save_reuse_generate_html = false  # Generate HTML visualization for saved flows (disabled by default for performance)
 decomposition_strategy = "flexible"  # "exact" = one subtask per app, "flexible" = allows multiple subtasks per app
+message_window_limit = 100  # Maximum number of messages to keep in history (sliding window)
+max_input_length = 50000  # Maximum characters allowed in user input (prevents abuse)
 
 
 [server_ports]

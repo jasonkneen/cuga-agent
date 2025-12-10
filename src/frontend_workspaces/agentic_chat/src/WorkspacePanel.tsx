@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Folder, File, ChevronRight, ChevronDown, X, Download, FileText, RefreshCw, Trash2 } from "lucide-react";
+import { Folder, File, ChevronRight, ChevronDown, X, Download, FileText, RefreshCw, Trash2, Info } from "lucide-react";
 import "./WorkspacePanel.css";
 
 interface FileNode {
@@ -114,7 +114,8 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
   };
 
   const handleDeleteClick = (file: FileNode) => {
-    setDeleteConfirmation({ file, isOpen: true });
+    // Disabled: Delete functionality is not available
+    // setDeleteConfirmation({ file, isOpen: true });
   };
 
   const handleDeleteConfirm = async () => {
@@ -151,25 +152,26 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
     setDeleteConfirmation(null);
   };
 
-  // Drag and drop handlers
+  // Drag and drop handlers - DISABLED
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer?.types.includes('Files')) {
-      setIsDragOver(true);
-    }
+    // Disabled: Upload functionality is not available
+    // if (e.dataTransfer?.types.includes('Files')) {
+    //   setIsDragOver(true);
+    // }
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only hide if we're actually leaving the component (not entering a child)
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX;
-    const y = e.clientY;
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-      setIsDragOver(false);
-    }
+    // Disabled: Upload functionality is not available
+    // const rect = e.currentTarget.getBoundingClientRect();
+    // const x = e.clientX;
+    // const y = e.clientY;
+    // if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+    //   setIsDragOver(false);
+    // }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -180,13 +182,12 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    setIsDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      await handleFileUpload(files);
-    }
+    // Disabled: Upload functionality is not available
+    // setIsDragOver(false);
+    // const files = Array.from(e.dataTransfer.files);
+    // if (files.length > 0) {
+    //   await handleFileUpload(files);
+    // }
   };
 
   const handleFileUpload = async (files: File[]) => {
@@ -258,7 +259,8 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
               >
                 <Download size={14} />
               </button>
-              <button
+              {/* Delete button disabled */}
+              {/* <button
                 className="delete-icon-btn"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -267,7 +269,7 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
                 title="Delete file"
               >
                 <Trash2 size={14} />
-              </button>
+              </button> */}
             </div>
           )}
         </div>
@@ -293,6 +295,16 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
           <div className="workspace-panel-title">
             <Folder size={18} />
             <span>Workspace</span>
+            <div 
+              className="workspace-info-tooltip-wrapper"
+              onClick={(e) => e.stopPropagation()}
+              onMouseEnter={(e) => e.stopPropagation()}
+            >
+              <Info size={16} className="info-icon" />
+              <div className="workspace-info-tooltip">
+                This is the CUGA workspace. Tag files directly from your working directory using <code>@</code>
+              </div>
+            </div>
           </div>
           <div className="workspace-panel-actions">
             <button
@@ -379,16 +391,18 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
         </div>
       )}
 
-      {isDragOver && (
+      {/* Drag overlay disabled */}
+      {/* {isDragOver && (
         <div className="workspace-drag-overlay">
           <div className="workspace-drag-content">
             <div className="workspace-drag-icon">📁</div>
             <div className="workspace-drag-text">Drop files here to upload</div>
           </div>
         </div>
-      )}
+      )} */}
 
-      {deleteConfirmation?.isOpen && (
+      {/* Delete confirmation modal disabled */}
+      {/* {deleteConfirmation?.isOpen && (
         <div className="delete-confirmation-overlay" onClick={handleDeleteCancel}>
           <div className="delete-confirmation-modal" onClick={(e) => e.stopPropagation()}>
             <div className="delete-confirmation-header">
@@ -417,7 +431,7 @@ export function WorkspacePanel({ isOpen, onToggle, highlightedFile }: WorkspaceP
             </div>
           </div>
         </div>
-      )}
+      )} */}
     </>
   );
 }

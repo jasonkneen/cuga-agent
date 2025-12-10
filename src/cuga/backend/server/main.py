@@ -14,12 +14,11 @@ from pathlib import Path
 from cuga.backend.utils.id_utils import random_id_with_timestamp
 import traceback
 from pydantic import BaseModel, ValidationError
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import AIMessage
 from loguru import logger
-from cuga.backend.cuga_graph.state.agent_state import VariablesManager
 
 from cuga.backend.activity_tracker.tracker import ActivityTracker
 from cuga.configurations.instructions_manager import InstructionsManager
@@ -379,6 +378,8 @@ async def event_stream(query: str, api_mode=False, resume=None, thread_id: str =
                     local_state.thread_id = thread_id
                     local_state.input = query  # Update input for the new query
                     local_tracker.intent = query
+                    # Apply sliding window to maintain message history limit
+                    local_state.apply_message_sliding_window()
                     logger.info(f"Loaded existing state for thread_id: {thread_id} (followup question)")
                 else:
                     # No existing state, create new one
@@ -674,6 +675,11 @@ if getattr(settings.advanced_features, "use_extension", False):
         if not query:
             return JSONResponse({"type": "agent_error", "message": "Missing query"}, status_code=400)
 
+        try:
+            validate_input_length(query)
+        except HTTPException as e:
+            return JSONResponse({"type": "agent_error", "message": e.detail}, status_code=e.status_code)
+
         async def event_gen():
             # Initial processing message
             yield (
@@ -804,8 +810,8 @@ async def reset_agent_state(request: Request):
 
         # Reset tracker experiment if enabled
         # TODO Remove this once we have a proper way to reset the variables manager
-        var_manger = VariablesManager()
-        var_manger.reset()
+        # var_manger = VariablesManager()
+        # var_manger.reset()
         logger.info("Agent state reset successfully")
         return {"status": "success", "message": "Agent state reset successfully"}
     except Exception as e:
@@ -1027,21 +1033,33 @@ async def get_tools_status():
 
 @app.post("/api/config/mode")
 async def save_mode_config(request: Request):
-    """Endpoint to save execution mode (fast/balanced)."""
+    """Endpoint to save execution mode (fast/balanced) and update agent state lite_mode."""
     try:
         data = await request.json()
         mode = data.get("mode", "balanced")
+        thread_id = request.headers.get("X-Thread-ID")
+        if not thread_id:
+            thread_id = data.get("thread_id")
 
-        # Update lite_mode setting based on mode
-        # if mode == "fast":
-        #     settings.advanced_features.lite_mode = True
-        #     logger.info("Lite mode enabled (lite_mode = True)")
-        # elif mode == "balanced":
-        #     settings.advanced_features.lite_mode = False
-        #     logger.info("Balanced mode enabled (lite_mode = False)")
+        # Determine lite_mode value based on mode
+        lite_mode = True if mode == "fast" else False
 
-        logger.info(f"Execution mode changed to: {mode}")
-        return JSONResponse({"status": "success", "mode": mode})
+        # Update agent state if thread_id is provided
+        if thread_id and app_state.agent and app_state.agent.graph:
+            try:
+                state_snapshot = app_state.agent.graph.get_state({"configurable": {"thread_id": thread_id}})
+                if state_snapshot and state_snapshot.values:
+                    local_state = AgentState(**state_snapshot.values)
+                    local_state.lite_mode = lite_mode
+                    app_state.agent.graph.update_state(
+                        {"configurable": {"thread_id": thread_id}}, local_state.model_dump()
+                    )
+                    logger.info(f"Updated agent state lite_mode to {lite_mode} for thread {thread_id}")
+            except Exception as e:
+                logger.warning(f"Could not update agent state for thread {thread_id}: {e}")
+
+        logger.info(f"Execution mode changed to: {mode} (lite_mode={lite_mode})")
+        return JSONResponse({"status": "success", "mode": mode, "lite_mode": lite_mode})
     except Exception as e:
         logger.error(f"Failed to save mode: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save mode: {str(e)}")
@@ -1074,6 +1092,7 @@ async def get_agent_state(request: Request):
                         "state": None,
                         "variables": {},
                         "variables_count": 0,
+                        "chat_messages_count": 0,
                         "message": "No state found for this thread_id",
                     }
                 )
@@ -1091,6 +1110,10 @@ async def get_agent_state(request: Request):
                         "url": local_state.url,
                         "current_app": local_state.current_app,
                         "messages_count": len(local_state.messages) if local_state.messages else 0,
+                        "chat_messages_count": len(local_state.chat_messages)
+                        if local_state.chat_messages
+                        else 0,
+                        "lite_mode": local_state.lite_mode,
                     },
                     "variables": variables_metadata,
                     "variables_count": len(variables_metadata),
@@ -1286,84 +1309,86 @@ async def download_workspace_file(path: str):
         raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
 
 
-@app.delete("/api/workspace/file")
-async def delete_workspace_file(path: str):
-    """Endpoint to delete a file from the workspace."""
-    try:
-        file_path = Path(path)
+# DISABLED: Delete endpoint commented out for security
+# @app.delete("/api/workspace/file")
+# async def delete_workspace_file(path: str):
+#     """Endpoint to delete a file from the workspace."""
+#     try:
+#         file_path = Path(path)
+#
+#         # Security check: ensure the path is within cuga_workspace
+#         try:
+#             file_path = file_path.resolve()
+#             workspace_path = (Path(os.getcwd()) / "cuga_workspace").resolve()
+#             file_path.relative_to(workspace_path)
+#         except (ValueError, RuntimeError):
+#             raise HTTPException(status_code=403, detail="Access denied: Path outside workspace")
+#
+#         if not file_path.exists():
+#             raise HTTPException(status_code=404, detail="File not found")
+#
+#         if not file_path.is_file():
+#             raise HTTPException(status_code=400, detail="Path is not a file")
+#
+#         # Delete the file
+#         file_path.unlink()
+#
+#         logger.info(f"File deleted successfully: {path}")
+#         return JSONResponse({"status": "success", "message": "File deleted successfully"})
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Failed to delete file: {e}")
+#         raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
 
-        # Security check: ensure the path is within cuga_workspace
-        try:
-            file_path = file_path.resolve()
-            workspace_path = (Path(os.getcwd()) / "cuga_workspace").resolve()
-            file_path.relative_to(workspace_path)
-        except (ValueError, RuntimeError):
-            raise HTTPException(status_code=403, detail="Access denied: Path outside workspace")
 
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="File not found")
-
-        if not file_path.is_file():
-            raise HTTPException(status_code=400, detail="Path is not a file")
-
-        # Delete the file
-        file_path.unlink()
-
-        logger.info(f"File deleted successfully: {path}")
-        return JSONResponse({"status": "success", "message": "File deleted successfully"})
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete file: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
-
-
-@app.post("/api/workspace/upload")
-async def upload_workspace_file(file: UploadFile = File(...)):
-    """Endpoint to upload a file to the workspace."""
-    try:
-        # Create workspace directory if it doesn't exist
-        workspace_path = Path(os.getcwd()) / "cuga_workspace"
-        workspace_path.mkdir(exist_ok=True)
-
-        # Sanitize filename and prevent directory traversal
-        safe_filename = Path(file.filename).name
-        if not safe_filename:
-            raise HTTPException(status_code=400, detail="Invalid filename")
-
-        # Prevent overwriting critical files
-        if safe_filename.startswith('.'):
-            raise HTTPException(status_code=400, detail="Hidden files not allowed")
-
-        file_path = workspace_path / safe_filename
-
-        # Check file size (limit to 50MB)
-        file_size = 0
-        content = await file.read()
-        file_size = len(content)
-
-        if file_size > 50 * 1024 * 1024:  # 50MB limit
-            raise HTTPException(status_code=413, detail="File too large (max 50MB)")
-
-        # Write file
-        with open(file_path, 'wb') as f:
-            f.write(content)
-
-        logger.info(f"File uploaded successfully: {safe_filename} ({file_size} bytes)")
-        return JSONResponse(
-            {
-                "status": "success",
-                "message": "File uploaded successfully",
-                "filename": safe_filename,
-                "path": str(file_path.relative_to(Path("."))),
-                "size": file_size,
-            }
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to upload file: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+# DISABLED: Upload endpoint commented out for security
+# @app.post("/api/workspace/upload")
+# async def upload_workspace_file(file: UploadFile = File(...)):
+#     """Endpoint to upload a file to the workspace."""
+#     try:
+#         # Create workspace directory if it doesn't exist
+#         workspace_path = Path(os.getcwd()) / "cuga_workspace"
+#         workspace_path.mkdir(exist_ok=True)
+#
+#         # Sanitize filename and prevent directory traversal
+#         safe_filename = Path(file.filename).name
+#         if not safe_filename:
+#             raise HTTPException(status_code=400, detail="Invalid filename")
+#
+#         # Prevent overwriting critical files
+#         if safe_filename.startswith('.'):
+#             raise HTTPException(status_code=400, detail="Hidden files not allowed")
+#
+#         file_path = workspace_path / safe_filename
+#
+#         # Check file size (limit to 50MB)
+#         file_size = 0
+#         content = await file.read()
+#         file_size = len(content)
+#
+#         if file_size > 50 * 1024 * 1024:  # 50MB limit
+#             raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+#
+#         # Write file
+#         with open(file_path, 'wb') as f:
+#             f.write(content)
+#
+#         logger.info(f"File uploaded successfully: {safe_filename} ({file_size} bytes)")
+#         return JSONResponse(
+#             {
+#                 "status": "success",
+#                 "message": "File uploaded successfully",
+#                 "filename": safe_filename,
+#                 "path": str(file_path.relative_to(Path("."))),
+#                 "size": file_size,
+#             }
+#         )
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Failed to upload file: {e}")
+#         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
 
 @app.post("/functions/call", tags=["Registry Proxy"])
@@ -1405,6 +1430,24 @@ async def proxy_function_call(request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to proxy function call: {str(e)}")
 
 
+def validate_input_length(text: str) -> None:
+    """Validate that input text doesn't exceed the maximum allowed length.
+
+    Args:
+        text: The input text to validate
+
+    Raises:
+        HTTPException: If text exceeds max_input_length
+    """
+    max_length = settings.advanced_features.max_input_length
+    if len(text) > max_length:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Input text is too long. Maximum allowed length is {max_length} characters, "
+            f"but received {len(text)} characters. Please reduce the input size.",
+        )
+
+
 async def get_query(request: Request) -> Union[str, ActionResponse]:
     """Parses the incoming request to extract the user query or action."""
     try:
@@ -1416,6 +1459,7 @@ async def get_query(request: Request) -> Union[str, ActionResponse]:
         query_text = data["query"]
         if not query_text.strip():
             raise HTTPException(status_code=422, detail="`query` may not be empty.")
+        validate_input_length(query_text)
         return query_text
     elif isinstance(data, dict) and "action_id" in data:
         try:
@@ -1432,6 +1476,7 @@ async def get_query(request: Request) -> Union[str, ActionResponse]:
                     break
             if not query_text.strip():
                 raise HTTPException(status_code=422, detail="No user message found or content is empty.")
+            validate_input_length(query_text)
             return query_text
         except ValidationError as e:
             raise HTTPException(status_code=422, detail=f"Invalid ChatRequest JSON: {e.errors()}")
