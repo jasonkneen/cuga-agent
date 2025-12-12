@@ -1,16 +1,26 @@
 **Previous Subtasks**:
 {% for item in stm_all_history %}
-{{ loop['index'] }}. {{ item['sub_task'] }}
+
+---
+
+**Subtask {{ loop['index'] }}**: {{ item['sub_task'] }}
+
+{% if item['steps']|length > 0 %}
+**Steps**:
 {% for step in item['steps'] %}
-        {{ loop['index'] }}. {{ step }}
+  - {{ step }}
 {% endfor %}
-{% if item['final_answer'] %}
-        **Final Answer**: {{item['final_answer']}}
+{% endif %}
+
+{% if item['final_answer'] is not none and item['final_answer']|string|trim != '' %}
+**Final Answer**: {{item['final_answer']}}
 {% else %}
-        **Final Answer**: no answer is returned
+**Final Answer**: no answer is returned
 {% endif %}
 
 {% endfor %}
+
+---
 
 **Variables History**:
 {{variables_history}}
@@ -27,6 +37,5 @@
 {%- for item in task_decomposition %}
 {{ loop['index'] }}. {{ item }}
 {%- endfor %}
-
 
 Current datetime: {{current_datetime}}

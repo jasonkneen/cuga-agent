@@ -129,8 +129,7 @@ class PlanControllerNode(BaseNode):
         tracker.collect_step(step=Step(name=name, data=plan_controller_output.model_dump_json()))
         state.messages.append(result)
 
-        # TODO: Remove this once we have a way to track subtask progress
-        # state.sub_tasks_progress = plan_controller_output.subtasks_progress
+        state.sub_tasks_progress = plan_controller_output.subtasks_progress
 
         if plan_controller_output.conclude_task or (
             all(status == "completed" for status in plan_controller_output.subtasks_progress)

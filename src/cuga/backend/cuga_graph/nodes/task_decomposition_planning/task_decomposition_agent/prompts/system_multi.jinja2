@@ -94,7 +94,7 @@ Sites: ['wikipedia', 'map']
 - **App Relevance:** The task must align with the functionalities of the specified app(s).
 - **Task Order:** Begin with "extract" for the first task unless it is clearly irrelevant, and ensure logical progression between the two tasks.
 - In case of ambiguity, reference broad application usage patterns (e.g., shopping apps for price comparison, GitLab for development-related data, Wikipedia for general knowledge extraction).
-{% if format_instructions.strip() != "" -%}
+{% if format_instructions -%}
 
 =======
 You must always return valid JSON fenced by a markdown code block. Do not return any additional text.

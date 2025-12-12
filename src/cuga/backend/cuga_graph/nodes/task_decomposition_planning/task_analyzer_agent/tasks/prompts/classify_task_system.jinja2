@@ -6,7 +6,7 @@ Output:
 3. requires_memory: whether the task requires memorizing information (e.g., copying fields for pasting).
 4. requires_loop: whether the task requires looping over data.
 5. requires_location_search: whether the task requires searching implicit and uncharted locations (e.g., "home town of x", "CMS Pittsburgh", "starbucks on x Street", or "closest natural park to x").
-{% if format_instructions.strip() != "" -%}
+{% if format_instructions -%}
 
 =======
 You must always return valid JSON fenced by a markdown code block. Do not return any additional text.

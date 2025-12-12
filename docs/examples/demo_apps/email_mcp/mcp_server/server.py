@@ -97,9 +97,7 @@ class ErrorResult(BaseModel):
 
 
 @mcp.tool()
-def send_email(
-    to_address: str, subject: str, body: str, attachments_paths: list = None
-) -> dict | ErrorResult:
+def send_email(to_address: str, subject: str, body: str) -> dict | ErrorResult:
     """
     Send an email via the local SMTP sink (localhost:1025).
     Sends multipart/alternative if both text_body and html_body are provided.
@@ -110,7 +108,7 @@ def send_email(
             to_addrs=[to_address],
             subject=subject,
             text_body=body,
-            attachments_paths=attachments_paths,
+            attachments_paths=None,
         )
     except FileNotFoundError as e:
         return ErrorResult(ok=False, error={"code": "ATTACHMENT_NOT_FOUND", "message": str(e)})

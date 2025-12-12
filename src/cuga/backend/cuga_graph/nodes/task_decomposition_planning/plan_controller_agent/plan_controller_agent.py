@@ -62,15 +62,17 @@ class PlanControllerAgent(BaseAgent):
 
         task_input = {
             "task_decomposition": input_variables.task_decomposition.format_as_list(),
-            "stm_all_history": input_variables.stm_all_history,
+            "stm_all_history": [item.model_dump() for item in input_variables.stm_all_history]
+            if input_variables.stm_all_history
+            else [],
         }
         data = input_variables.model_dump()
         if tracker.images and len(tracker.images) > 0:
             data["img"] = tracker.images[-1]
         data["task_decomposition"] = task_input["task_decomposition"]
         data["stm_all_history"] = task_input["stm_all_history"]
-        # data["sub_tasks_progress"] = input_variables.sub_tasks_progress or []
-        data["variables_history"] = input_variables.variables_manager.get_variables_summary(last_n=6)
+        data["sub_tasks_progress"] = input_variables.sub_tasks_progress or []
+        data["variables_history"] = input_variables.variables_manager.get_variables_summary(last_n=8)
         logger.info(
             f"Variables history being passed to prompt (length: {len(data['variables_history'])} chars):"
         )

@@ -19,7 +19,7 @@ Task definition
     a. approach: Section names or tabs names in natural language.
     b. extensive_pagination: Whether the approach requires going over many pages (more than 5) or records (more than 50)
     c. estimated_steps: Estimated number of steps in the approach
-{% if format_instructions.strip() != "" -%}
+{% if format_instructions -%}
 
 =======
 You must always return valid JSON fenced by a markdown code block. Do not return any additional text.
