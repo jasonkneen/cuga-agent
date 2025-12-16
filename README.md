@@ -14,6 +14,8 @@ Building a domain-specific enterprise agent from scratch is complex and requires
 
 ---
 
+[![🦉🤗 Try CUGA Live on Hugging Face Spaces](https://img.shields.io/badge/🦉🤗_Try_CUGA_Live_on_Hugging_Face_Spaces-FFD21E?style=for-the-badge)](https://huggingface.co/spaces/ibm-research/cuga-agent)
+
 [![Python](https://shields.io/badge/Python-3.12-blue?logo=python&style=for-the-badge)](https://www.python.org/)
 [![Status](https://shields.io/badge/Status-Active-success?logo=checkmarx&style=for-the-badge)]()
 [![Documentation](https://shields.io/badge/Documentation-Available-blue?logo=gitbook&style=for-the-badge)](https://docs.cuga.dev)
