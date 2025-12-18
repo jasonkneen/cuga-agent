@@ -4,6 +4,7 @@ import os
 import shutil
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import time
 
 import pandas as pd
 
@@ -61,6 +62,7 @@ class TasksMetadata(BaseModel):
 
 class ActivityTracker(object):
     _instance = None
+    start_time: float = 0
     user_id: str = ""
     intent: str = ""
     session_id: str = ""
@@ -366,6 +368,7 @@ class ActivityTracker(object):
 
     def reset(self, intent, task_id="default"):
         self.token_usage = 0
+        self.start_time = time.time()
         self.current_date = None
         self.pi = None
         self.prompts = []
@@ -489,6 +492,8 @@ class ActivityTracker(object):
                 self.memory.create_namespace(namespace_id="memory")
             self.memory.create_run(namespace_id="memory", run_id=self.experiment_folder)
 
+        # Start timer
+        self.start_time = time.time()
         return self.experiment_folder
 
     def _initialize_experiment_files(self, experiment_dir: str) -> None:
@@ -830,10 +835,10 @@ class ActivityTracker(object):
         fail_category: Optional[str] = None,
         agent_v: Optional[str] = None,
         duration: Optional[int] = None,
-        api_calls: Optional[int] = None,
         total_llm_calls: Optional[int] = None,
         total_tokens: Optional[int] = None,
         total_cost: Optional[float] = None,
+        total_cache_input_tokens: Optional[int] = None,
     ) -> str:
         """
         Mark a task as finished and update result files.
@@ -856,6 +861,8 @@ class ActivityTracker(object):
         if not self.experiment_folder:
             raise ValueError("No experiment started. Call start_experiment() first.")
 
+        # Calculate number of api calls
+        api_calls_num = len([step for step in self.steps if "api_call" in step.name])
         # Add task to internal storage
         self.tasks[task_id] = {
             "site": site,
@@ -864,14 +871,15 @@ class ActivityTracker(object):
             "eval": eval,
             "score": score,
             "exception": exception,
-            "num_steps": num_steps,
+            "num_steps": num_steps if num_steps is not None else len(self.steps),
             "fail_category": fail_category,
             "agent_v": agent_v,
-            "duration": duration,
+            "duration": duration if duration is not None else time.time() - self.start_time,
             "total_llm_calls": total_llm_calls,
-            "total_tokens": total_tokens,
-            "api_calls": api_calls,
+            "total_tokens": self.token_usage if not total_tokens else total_tokens,
+            "api_calls": api_calls_num,
             "total_cost": total_cost,
+            "total_cache_input_tokens": total_cache_input_tokens,
         }
 
         # Update result files only if tracker is enabled
@@ -915,6 +923,7 @@ class ActivityTracker(object):
             'total_tokens',
             'api_calls',
             'total_cost',
+            'total_cache_input_tokens',
         ]
 
         if not self.tasks:

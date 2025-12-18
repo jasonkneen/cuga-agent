@@ -1,5 +1,7 @@
 from cuga.backend.activity_tracker.tracker import ActivityTracker
 from cuga.backend.cuga_graph.utils.controller import AgentRunner, ExperimentResult
+from cuga.evaluation.langfuse.get_langfuse_data import LangfuseTraceHandler
+
 from loguru import logger
 import traceback
 from pydantic import BaseModel
@@ -148,12 +150,13 @@ async def run_cuga(test_file_path: str, result_file_path: str) -> (List[TestCase
                 # Reset variables after task completion using the current state
                 state = agent_runner.get_current_state()
                 state.variables_manager.reset()
-                filtered_steps = [step for step in result.steps if "api_call" in step.name]
-                result.steps = filtered_steps
                 results.append(result)
                 parsed_results = parse_test_results([task], [result])
                 save_test_results(parsed_results, result_file_path)
-
+                # Extract langfuse trace ID (applicable only if `langfuse_tracing=true` in settings)
+                langfuse_trace_id = agent_runner.agent_loop_obj.get_langfuse_trace_id()
+                langfuse_handler = LangfuseTraceHandler(langfuse_trace_id)
+                langfuse_data = await langfuse_handler.get_langfuse_data()
                 tracker.finish_task(
                     intent=task.intent,
                     site="",
@@ -169,6 +172,12 @@ async def run_cuga(test_file_path: str, result_file_path: str) -> (List[TestCase
                     agent_answer=result.answer,
                     exception=False,
                     agent_v="",
+                    total_llm_calls=langfuse_data.total_llm_calls if langfuse_data else None,
+                    total_tokens=langfuse_data.total_tokens if langfuse_data else None,
+                    total_cost=langfuse_data.total_cost if langfuse_data else None,
+                    total_cache_input_tokens=langfuse_data.total_cache_input_tokens
+                    if langfuse_data
+                    else None,
                 )
             except Exception as e:
                 results.append(ExperimentResult(answer=f"Error {e}", score=0, messages=[], steps=[]))
@@ -202,7 +211,7 @@ def parse_test_results(
         keywords = test_case.expected_output.keywords
         expected_tools = [tool for tool in test_case.expected_output.tool_calls]
         tool_calls = []
-        for call in experiment_result.steps:
+        for call in [step for step in experiment_result.steps if "api_call" in step.name]:
             call_json = json.loads(call.data)
             tool_calls.append(ToolCall(name=call_json['function_name'], args=call_json['args']))
         test_score, test_score_details = evaluate_test_and_details(

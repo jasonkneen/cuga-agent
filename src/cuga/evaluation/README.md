@@ -118,6 +118,44 @@ The evaluation generates **two files**:
 }
 ```
 
+## **Langfuse Tracing (Optional)**
+### Setup Langfuse
+In a different folder (not under Cuga) run
+```bash
+# Get a copy of the latest Langfuse repository
+git clone https://github.com/langfuse/langfuse.git
+cd langfuse
+
+# Run the langfuse docker compose
+docker compose up
+```
+
+### Get API Keys
+
+1. Access the Langfuse UI: Open a web browser and navigate to the URL where your self-hosted Langfuse instance is running (e.g., http://localhost:3000 if running locally with default ports).
+2. Log in: Sign in with the user account you created during the initial setup or create a new account.
+3. Navigate to Project Settings:
+    Click on the "Project" menu (usually in the sidebar or top navigation).
+    Select "Settings".
+4. View API Keys:
+    In the settings area, you will find a section for API keys.
+    You can view or regenerate your LANGFUSE_PUBLIC_KEY (username) and LANGFUSE_SECRET_KEY (password) there.
+    The secret key is hidden by default; you may need to click an eye icon or a specific button to reveal and copy it.
+5. Add the API keys and host to your .env file
+```.dotenv
+LANGFUSE_SECRET_KEY="your-secret-key"
+LANGFUSE_PUBLIC_KEY="your-public-key"
+LANGFUSE_HOST="http://localhost:3000"
+```
+
+### Update settings
+Then in `vendor/cuga-agent/src/cuga/settings.toml` update
+```
+langfuse_tracing = true
+```
+
+
+
 ---
 
 ## **Quick Start Example**
@@ -149,6 +187,10 @@ This is the example input JSON:
 }
 
 ```
+
+First set `tracker_enabled = true` in the `settings.toml`
+
+Now you can start running the example.
 
 1. **Update API URL** in [mcp_servers.yaml](src/cuga/backend/tools_env/registry/config/mcp_servers.yaml):  
    ```yaml
