@@ -14,6 +14,10 @@ spec:
       labels:
         {{- include "cuga.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -27,12 +31,14 @@ spec:
             - name: CUGA_DBS_DIR
               value: "/data/dbs"
             {{- end }}
+            {{- $secret := .Values.existingSecret }}
+            {{- $sensitiveKeys := list "GROQ_API_KEY" "OIDC_CLIENT_SECRET" "OIDC_CLIENT_ID" "OIDC_DISCOVERY_URL" "OIDC_REDIRECT_URI" "DYNACONF_STORAGE__POSTGRES_URL" }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
-              {{- if and $.Values.existingSecret (or (eq $key "OPENAI_API_KEY") (eq $key "GROQ_API_KEY") (eq $key "OPENAI_BASE_URL")) }}
+              {{- if and $secret (has $key $sensitiveKeys) }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.existingSecret }}
+                  name: {{ $secret }}
                   key: {{ $key }}
                   optional: true
               {{- else }}
@@ -43,14 +49,26 @@ spec:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            failureThreshold: 5
+            timeoutSeconds: 10
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 5
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            failureThreshold: 10
+            timeoutSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 18
+            timeoutSeconds: 10
           {{- if .Values.persistence.dbs.enabled }}
           volumeMounts:
             - name: dbs

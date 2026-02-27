@@ -1,21 +1,39 @@
 replicaCount: 1
 
 image:
-  repository: cuga-agent
+  repository: us.icr.io/nocodeui-automation/cuga
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
+
+imagePullSecrets: []
 
 service:
   type: ClusterIP
   port: 7860
 
+route:
+  enabled: true
+  hostname: ""
+  # TLS is edge-terminated at the OpenShift router
+  # insecureEdgeTerminationPolicy: Redirect (HTTP -> HTTPS)
+
 env:
-  OPENAI_API_KEY: ""
+  UV_CACHE_DIR: "/tmp/uv-cache"
   GROQ_API_KEY: ""
-  OPENAI_BASE_URL: ""
   MODEL_NAME: "openai/gpt-oss-120b"
   AGENT_SETTING_CONFIG: "settings.groq.toml"
+  DYNACONF_SERVICE__INSTANCE_ID: ""
+  DYNACONF_SERVICE__TENANT_ID: ""
+  DYNACONF_AUTH__ENABLED: "true"
+  OIDC_CLIENT_ID: ""
+  OIDC_CLIENT_SECRET: ""
+  OIDC_DISCOVERY_URL: ""
+  OIDC_REDIRECT_URI: ""
+  DYNACONF_STORAGE__MODE: "local"
+  DYNACONF_STORAGE__POSTGRES_URL: ""
 
+# Name of an existing Secret containing sensitive env vars.
+# When set, sensitive keys are sourced via secretKeyRef instead of plain value.
 existingSecret: ""
 
 persistence:

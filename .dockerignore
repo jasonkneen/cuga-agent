@@ -70,5 +70,3 @@ src/system_tests/e2e/logs/
 docs/**
 !docs/examples/demo_apps/
 !docs/examples/huggingface/
-README.md
-*.md
